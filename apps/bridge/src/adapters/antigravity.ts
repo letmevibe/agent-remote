@@ -80,6 +80,9 @@ export class AntigravityAdapter implements AgentAdapter {
     if (ctx.model) {
       args.push('--model', ctx.model);
     }
+    if (ctx.effort) {
+      args.push('--effort', ctx.effort);
+    }
     if (ctx.resumeConversationId) {
       args.push('--resume', ctx.resumeConversationId);
     }

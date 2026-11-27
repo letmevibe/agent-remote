@@ -2,6 +2,7 @@ import type {
   AgentDescriptor,
   AgentExecutionMode,
   PermissionDecision,
+  ReasoningEffort,
   StreamEventPayload,
 } from '@agent-remote/protocol';
 
@@ -10,6 +11,7 @@ export interface AgentTurnContext {
   workspacePath: string;
   prompt: string;
   mode: AgentExecutionMode;
+  effort?: ReasoningEffort;
   model?: string;
   resumeConversationId?: string;
   onEvent: (event: StreamEventPayload) => void;

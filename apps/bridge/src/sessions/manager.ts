@@ -82,6 +82,7 @@ export class SessionManager {
       agentId: req.agentId,
       workspacePath: req.workspacePath || this.defaultWorkspacePath,
       mode: req.mode ?? 'accept-edits',
+      effort: req.effort ?? 'medium',
       model: req.model,
       status: 'idle',
       createdAt: now,
@@ -123,6 +124,9 @@ export class SessionManager {
     if (req.mode) {
       session.summary.mode = req.mode;
     }
+    if (req.effort) {
+      session.summary.effort = req.effort;
+    }
     if (req.model) {
       session.summary.model = req.model;
     }
@@ -140,6 +144,7 @@ export class SessionManager {
       workspacePath: session.summary.workspacePath,
       prompt: req.text,
       mode: session.summary.mode as AgentExecutionMode,
+      effort: session.summary.effort,
       model: session.summary.model,
       resumeConversationId: session.externalConversationId,
       onConversationId: (externalId) => {

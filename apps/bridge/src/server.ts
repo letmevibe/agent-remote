@@ -1,5 +1,6 @@
 import http from 'node:http';
 import os from 'node:os';
+import path from 'node:path';
 import cors from 'cors';
 import express from 'express';
 import { Server as SocketIOServer } from 'socket.io';
@@ -8,6 +9,7 @@ import type {
   CreateSessionRequest,
   HostInfo,
   PairResponse,
+  ProjectInfo,
   ServerToClientEvents,
 } from '@agent-remote/protocol';
 import { AdapterRegistry } from './adapters/registry.js';
@@ -117,8 +119,33 @@ export async function startBridgeServer(
     }
   });
 
-  app.get('/api/diff', requireAuth, async (_req, res) => {
-    const diff = await getWorkspaceGitDiff(config.workspacePath);
+  app.get('/api/projects', requireAuth, (_req, res) => {
+    const projectMap = new Map<string, ProjectInfo>();
+    const addProject = (dirPath: string) => {
+      const normalized = path.resolve(dirPath);
+      if (!projectMap.has(normalized)) {
+        projectMap.set(normalized, {
+          id: normalized,
+          name: path.basename(normalized) || normalized,
+          path: normalized,
+        });
+      }
+    };
+
+    addProject(config.workspacePath);
+    for (const s of sessions.list()) {
+      addProject(s.workspacePath);
+    }
+
+    res.json({ projects: Array.from(projectMap.values()) });
+  });
+
+  app.get('/api/diff', requireAuth, async (req, res) => {
+    const requestedPath =
+      typeof req.query.workspacePath === 'string' && req.query.workspacePath.trim()
+        ? req.query.workspacePath.trim()
+        : config.workspacePath;
+    const diff = await getWorkspaceGitDiff(requestedPath);
     res.json(diff);
   });
 

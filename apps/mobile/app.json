@@ -26,7 +26,8 @@
           "photosPermission": "Allow Agent Remote to attach screenshots and photos to your agent prompts."
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "./plugins/withCleartextTraffic"
     ],
     "experiments": {
       "typedRoutes": true

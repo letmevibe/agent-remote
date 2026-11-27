@@ -10,6 +10,10 @@ import type {
   StreamEventPayload,
 } from '@agent-remote/protocol';
 import type { AgentTurnHandle } from '../adapters/base.js';
+import {
+  discoverAntigravityConversations,
+  loadAntigravityTranscriptEvents,
+} from '../adapters/antigravityHistory.js';
 import type { AdapterRegistry } from '../adapters/registry.js';
 import type { StateStore } from '../storage/stateStore.js';
 
@@ -18,6 +22,8 @@ interface InternalSession {
   events: StreamEventEnvelope[];
   activeTurn?: AgentTurnHandle;
   externalConversationId?: string;
+  sourceDir?: string;
+  transcriptLoaded?: boolean;
 }
 
 const MAX_BUFFERED_EVENTS = 1500;
@@ -52,6 +58,32 @@ export class SessionManager {
     }
   }
 
+  async syncLocalAntigravitySessions(): Promise<void> {
+    const discovered = await discoverAntigravityConversations(
+      this.defaultWorkspacePath,
+    );
+    for (const item of discovered) {
+      const existing = this.sessions.get(item.summary.id);
+      if (existing) {
+        existing.summary.title = item.summary.title;
+        existing.summary.updatedAt = item.summary.updatedAt;
+        if (!existing.activeTurn) {
+          existing.summary.status = item.summary.status;
+        }
+        existing.sourceDir = item.sourceDir;
+        continue;
+      }
+
+      this.sessions.set(item.summary.id, {
+        summary: item.summary,
+        events: [],
+        externalConversationId: item.externalConversationId,
+        sourceDir: item.sourceDir,
+        transcriptLoaded: false,
+      });
+    }
+  }
+
   list(): SessionSummary[] {
     return Array.from(this.sessions.values())
       .map((s) => s.summary)
@@ -65,6 +97,24 @@ export class SessionManager {
   getEventsAfter(sessionId: string, afterSeq = 0): StreamEventEnvelope[] {
     const session = this.sessions.get(sessionId);
     if (!session) return [];
+
+    if (
+      session.events.length === 0 &&
+      !session.transcriptLoaded &&
+      session.externalConversationId
+    ) {
+      session.transcriptLoaded = true;
+      const loaded = loadAntigravityTranscriptEvents(
+        session.summary.id,
+        session.externalConversationId,
+        session.sourceDir,
+      );
+      if (loaded.length > 0) {
+        session.events = loaded;
+        session.summary.lastSeq = loaded[loaded.length - 1]!.seq;
+      }
+    }
+
     return session.events.filter((e) => e.seq > afterSeq);
   }
 

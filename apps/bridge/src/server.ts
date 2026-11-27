@@ -103,7 +103,8 @@ export async function startBridgeServer(
     res.json(host);
   });
 
-  app.get('/api/sessions', requireAuth, (_req, res) => {
+  app.get('/api/sessions', requireAuth, async (_req, res) => {
+    await sessions.syncLocalAntigravitySessions();
     res.json({ sessions: sessions.list() });
   });
 
@@ -119,7 +120,8 @@ export async function startBridgeServer(
     }
   });
 
-  app.get('/api/projects', requireAuth, (_req, res) => {
+  app.get('/api/projects', requireAuth, async (_req, res) => {
+    await sessions.syncLocalAntigravitySessions();
     const projectMap = new Map<string, ProjectInfo>();
     const addProject = (dirPath: string) => {
       const normalized = path.resolve(dirPath);

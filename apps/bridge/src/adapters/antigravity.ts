@@ -11,6 +11,31 @@ function resolveAgyBinary(): string {
   return process.platform === 'win32' ? 'agy.exe' : 'agy';
 }
 
+interface AgyStepUpdate {
+  conversation_id?: string;
+  step_index?: number;
+  state?: string;
+  step_type?: string;
+  text_delta?: string;
+  thinking_delta?: string;
+  tool_name?: string;
+  summary?: string;
+  output?: string;
+  error?: string;
+}
+
+interface AgyStreamEvent {
+  event?: string;
+  conversation_id?: string;
+  step_update?: AgyStepUpdate;
+  result?: {
+    conversation_id?: string;
+    status?: string;
+    response?: string;
+    error?: string;
+  };
+}
+
 export class AntigravityAdapter implements AgentAdapter {
   readonly id = 'antigravity';
   readonly name = 'Antigravity CLI';
@@ -46,7 +71,6 @@ export class AntigravityAdapter implements AgentAdapter {
 
   runTurn(ctx: AgentTurnContext): AgentTurnHandle {
     const args: string[] = [
-      '--print',
       '--output-format',
       'stream-json',
       '--mode',
@@ -60,7 +84,8 @@ export class AntigravityAdapter implements AgentAdapter {
       args.push('--resume', ctx.resumeConversationId);
     }
 
-    args.push(ctx.prompt);
+    // --print takes the prompt string directly as its value
+    args.push('--print', ctx.prompt);
 
     const child = spawn(this.command, args, {
       cwd: ctx.workspacePath,
@@ -69,6 +94,10 @@ export class AntigravityAdapter implements AgentAdapter {
     });
 
     const assistantMessageId = crypto.randomUUID();
+    const seenToolSteps = new Set<string>();
+    let streamedAnyText = false;
+    let emittedTurnCompleted = false;
+
     const rl = readline.createInterface({ input: child.stdout });
 
     rl.on('line', (line) => {
@@ -76,9 +105,21 @@ export class AntigravityAdapter implements AgentAdapter {
       if (!trimmed) return;
 
       try {
-        const parsed = JSON.parse(trimmed) as Record<string, unknown>;
-        this.handleJsonEvent(parsed, assistantMessageId, ctx);
+        const parsed = JSON.parse(trimmed) as AgyStreamEvent;
+        this.handleEvent(parsed, {
+          assistantMessageId,
+          seenToolSteps,
+          markTextStreamed: () => {
+            streamedAnyText = true;
+          },
+          hasStreamedText: () => streamedAnyText,
+          markTurnCompleted: () => {
+            emittedTurnCompleted = true;
+          },
+          ctx,
+        });
       } catch {
+        streamedAnyText = true;
         ctx.onEvent({
           type: 'assistant.delta',
           messageId: assistantMessageId,
@@ -110,7 +151,7 @@ export class AntigravityAdapter implements AgentAdapter {
             status: 'error',
             error: stderrBuffer.trim() || `${this.command} exited with code ${code}`,
           });
-        } else {
+        } else if (!emittedTurnCompleted) {
           ctx.onEvent({
             type: 'turn.completed',
             messageId: assistantMessageId,
@@ -128,76 +169,102 @@ export class AntigravityAdapter implements AgentAdapter {
     };
   }
 
-  private handleJsonEvent(
-    raw: Record<string, unknown>,
-    messageId: string,
-    ctx: AgentTurnContext,
+  private handleEvent(
+    raw: AgyStreamEvent,
+    state: {
+      assistantMessageId: string;
+      seenToolSteps: Set<string>;
+      markTextStreamed: () => void;
+      hasStreamedText: () => boolean;
+      markTurnCompleted: () => void;
+      ctx: AgentTurnContext;
+    },
   ): void {
+    const { ctx, assistantMessageId, seenToolSteps } = state;
+
     const convId =
-      (typeof raw.conversationId === 'string' && raw.conversationId) ||
-      (typeof raw.conversation_id === 'string' && raw.conversation_id) ||
-      (typeof raw.session_id === 'string' && raw.session_id);
+      raw.conversation_id ||
+      raw.step_update?.conversation_id ||
+      raw.result?.conversation_id;
 
     if (convId && ctx.onConversationId) {
       ctx.onConversationId(convId);
     }
 
-    const type = String(raw.type ?? '');
+    if (raw.event === 'step_update' && raw.step_update) {
+      const step = raw.step_update;
+      const stepType = step.step_type ?? '';
 
-    if (type.includes('thinking') || type.includes('reasoning')) {
-      const delta = String(raw.delta ?? raw.text ?? raw.content ?? '');
-      if (delta) {
-        ctx.onEvent({ type: 'thinking.delta', messageId, delta });
+      if (step.thinking_delta) {
+        ctx.onEvent({
+          type: 'thinking.delta',
+          messageId: assistantMessageId,
+          delta: step.thinking_delta,
+        });
+      }
+
+      if (stepType === 'agent_response') {
+        if (step.text_delta) {
+          state.markTextStreamed();
+          ctx.onEvent({
+            type: 'assistant.delta',
+            messageId: assistantMessageId,
+            delta: step.text_delta,
+          });
+        }
+        return;
+      }
+
+      if (stepType && stepType !== 'user_input' && stepType !== 'thinking') {
+        const callId = `step-${step.step_index ?? crypto.randomUUID()}`;
+        const toolName = step.tool_name || stepType;
+
+        if (!seenToolSteps.has(callId)) {
+          seenToolSteps.add(callId);
+          ctx.onEvent({
+            type: 'tool.call',
+            callId,
+            toolName,
+            summary: step.summary || toolName,
+          });
+        }
+
+        if (step.state === 'DONE' || step.state === 'ERROR') {
+          ctx.onEvent({
+            type: 'tool.result',
+            callId,
+            toolName,
+            ok: step.state === 'DONE' && !step.error,
+            outputPreview: (step.output || step.error || 'Completed').slice(0, 2000),
+          });
+        }
       }
       return;
     }
 
-    if (type.includes('tool_use') || type.includes('tool_call')) {
-      const callId = String(raw.id ?? raw.callId ?? crypto.randomUUID());
-      const toolName = String(raw.name ?? raw.tool ?? 'tool');
-      ctx.onEvent({
-        type: 'tool.call',
-        callId,
-        toolName,
-        summary: `${toolName}`,
-        input:
-          typeof raw.input === 'object' && raw.input !== null
-            ? (raw.input as Record<string, unknown>)
-            : undefined,
-      });
-      return;
-    }
+    if (raw.event === 'result' && raw.result) {
+      if (raw.result.status && raw.result.status !== 'SUCCESS') {
+        ctx.onEvent({
+          type: 'session.status',
+          status: 'error',
+          error: raw.result.error || `Agent finished with status ${raw.result.status}`,
+        });
+        return;
+      }
 
-    if (type.includes('tool_result')) {
-      const callId = String(raw.tool_use_id ?? raw.callId ?? crypto.randomUUID());
-      const toolName = String(raw.name ?? raw.tool ?? 'tool');
-      const output =
-        typeof raw.output === 'string'
-          ? raw.output
-          : typeof raw.content === 'string'
-            ? raw.content
-            : JSON.stringify(raw.output ?? raw.content ?? '');
-      ctx.onEvent({
-        type: 'tool.result',
-        callId,
-        toolName,
-        ok: raw.is_error !== true,
-        outputPreview: output.slice(0, 2000),
-      });
-      return;
-    }
+      if (!state.hasStreamedText() && raw.result.response) {
+        state.markTextStreamed();
+        ctx.onEvent({
+          type: 'assistant.delta',
+          messageId: assistantMessageId,
+          delta: raw.result.response,
+        });
+      }
 
-    const text =
-      (typeof raw.delta === 'string' && raw.delta) ||
-      (typeof raw.text === 'string' && raw.text) ||
-      (typeof raw.result === 'string' && raw.result) ||
-      '';
-
-    if (text) {
+      state.markTurnCompleted();
       ctx.onEvent({
-        type: 'assistant.delta',
-        messageId,
-        delta: text,
+        type: 'turn.completed',
+        messageId: assistantMessageId,
       });
     }
   }

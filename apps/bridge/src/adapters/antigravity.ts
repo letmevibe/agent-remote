@@ -22,6 +22,12 @@ interface AgyStepUpdate {
   summary?: string;
   output?: string;
   error?: string;
+  tool_info?: {
+    name?: string;
+    parameters?: Record<string, unknown>;
+    output?: string;
+    error?: string;
+  };
 }
 
 interface AgyStreamEvent {
@@ -102,14 +108,12 @@ export class AntigravityAdapter implements AgentAdapter {
   }
 
   runTurn(ctx: AgentTurnContext): AgentTurnHandle {
-    const args: string[] = [
-      '--output-format',
-      'stream-json',
-      '--mode',
-      ctx.mode,
-    ];
+    const args: string[] = ['--output-format', 'stream-json'];
 
-    if (ctx.mode === 'auto') {
+    if (ctx.mode === 'plan') {
+      args.push('--mode', 'plan');
+    } else {
+      // Headless --print has no interactive stdin for review prompts
       args.push('--dangerously-skip-permissions');
     }
 
@@ -255,7 +259,16 @@ export class AntigravityAdapter implements AgentAdapter {
 
       if (stepType && stepType !== 'user_input' && stepType !== 'thinking') {
         const callId = `step-${step.step_index ?? crypto.randomUUID()}`;
-        const toolName = step.tool_name || stepType;
+        const toolName = step.tool_info?.name || step.tool_name || stepType;
+        const params = step.tool_info?.parameters;
+        const paramPreview =
+          (typeof params?.CommandLine === 'string' && params.CommandLine) ||
+          (typeof params?.Path === 'string' && params.Path) ||
+          (typeof params?.TargetFile === 'string' && params.TargetFile) ||
+          (typeof params?.DirectoryPath === 'string' && params.DirectoryPath) ||
+          (typeof params?.Query === 'string' && params.Query) ||
+          step.summary ||
+          toolName;
 
         if (!seenToolSteps.has(callId)) {
           seenToolSteps.add(callId);
@@ -263,17 +276,24 @@ export class AntigravityAdapter implements AgentAdapter {
             type: 'tool.call',
             callId,
             toolName,
-            summary: step.summary || toolName,
+            summary: paramPreview.slice(0, 120),
+            input: params,
           });
         }
 
         if (step.state === 'DONE' || step.state === 'ERROR') {
+          const toolOut =
+            step.tool_info?.output ||
+            step.tool_info?.error ||
+            step.output ||
+            step.error ||
+            'Completed';
           ctx.onEvent({
             type: 'tool.result',
             callId,
             toolName,
-            ok: step.state === 'DONE' && !step.error,
-            outputPreview: (step.output || step.error || 'Completed').slice(0, 2000),
+            ok: step.state === 'DONE' && !step.error && !step.tool_info?.error,
+            outputPreview: toolOut.slice(0, 2000),
           });
         }
       }

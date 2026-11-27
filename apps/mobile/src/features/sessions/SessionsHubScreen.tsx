@@ -16,9 +16,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import type {
   AgentExecutionMode,
-  AgentId,
+  ModelInfo,
   ProjectInfo,
-  ReasoningEffort,
   SessionSummary,
 } from '@agent-remote/protocol';
 import {
@@ -36,6 +35,7 @@ import {
 import { FloatingComposer } from '@/components/FloatingComposer';
 import {
   createSession,
+  fetchModels,
   fetchProjects,
   fetchSessions,
 } from '@/core/network/apiClient';
@@ -66,8 +66,8 @@ export function SessionsHubScreen() {
 
   // Composer state for instant prompt launch from Home
   const [draft, setDraft] = useState('');
-  const [agentId, setAgentId] = useState<AgentId>('antigravity');
-  const [effort, setEffort] = useState<ReasoningEffort>('medium');
+  const [models, setModels] = useState<ModelInfo[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState<string | undefined>();
   const [mode, setMode] = useState<AgentExecutionMode>('accept-edits');
 
   const loadData = useCallback(async () => {
@@ -80,12 +80,17 @@ export function SessionsHubScreen() {
     }
 
     try {
-      const [projectList, sessionList] = await Promise.all([
+      const [projectList, sessionList, modelList] = await Promise.all([
         fetchProjects(saved),
         fetchSessions(saved),
+        fetchModels(saved).catch(() => []),
       ]);
       setProjects(projectList);
       setSessions(sessionList);
+      setModels(modelList);
+      if (modelList.length > 0) {
+        setSelectedModelId((curr) => curr ?? modelList[0]!.id);
+      }
     } catch (err) {
       Alert.alert(
         'Host unreachable',
@@ -144,10 +149,10 @@ export function SessionsHubScreen() {
         ? initialPrompt.slice(0, 48)
         : undefined;
       const created = await createSession(host, {
-        agentId,
+        agentId: 'antigravity',
         workspacePath: workspacePath ?? host.workspacePath,
         mode,
-        effort,
+        model: selectedModelId,
         title,
         initialPrompt,
       });
@@ -367,10 +372,9 @@ export function SessionsHubScreen() {
           value={draft}
           onChangeText={setDraft}
           onSubmit={handleComposerSubmit}
-          agentId={agentId}
-          onChangeAgent={setAgentId}
-          effort={effort}
-          onChangeEffort={setEffort}
+          models={models}
+          selectedModelId={selectedModelId}
+          onChangeModel={setSelectedModelId}
           mode={mode}
           onChangeMode={setMode}
           onPressPlus={() => void handleStartSession(host.workspacePath)}

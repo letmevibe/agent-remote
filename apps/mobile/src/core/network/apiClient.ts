@@ -2,6 +2,7 @@ import type {
   CreateSessionRequest,
   GitDiffResponse,
   HostInfo,
+  ModelInfo,
   PairResponse,
   ProjectInfo,
   SessionSummary,
@@ -70,6 +71,16 @@ export async function createSession(
     },
   );
   return data.session;
+}
+
+export async function fetchModels(host: SavedHost): Promise<ModelInfo[]> {
+  const data = await requestJson<{ models: ModelInfo[] }>(
+    `${host.url}/api/models`,
+    {
+      headers: { Authorization: `Bearer ${host.deviceToken}` },
+    },
+  );
+  return data.models;
 }
 
 export async function fetchProjects(host: SavedHost): Promise<ProjectInfo[]> {

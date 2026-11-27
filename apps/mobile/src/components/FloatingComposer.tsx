@@ -2,18 +2,16 @@ import React, { useState } from 'react';
 import {
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import type {
-  AgentExecutionMode,
-  AgentId,
-  ReasoningEffort,
-} from '@agent-remote/protocol';
+import type { AgentExecutionMode, ModelInfo } from '@agent-remote/protocol';
 import {
   ArrowRight,
+  Check,
   ChevronDown,
   Gauge,
   Mic,
@@ -28,26 +26,14 @@ interface FloatingComposerProps {
   onSubmit: () => void;
   onCancel?: () => void;
   isRunning?: boolean;
-  agentId: AgentId;
-  onChangeAgent: (agentId: AgentId) => void;
-  effort: ReasoningEffort;
-  onChangeEffort: (effort: ReasoningEffort) => void;
+  models: ModelInfo[];
+  selectedModelId?: string;
+  onChangeModel: (modelId: string) => void;
   mode: AgentExecutionMode;
   onChangeMode: (mode: AgentExecutionMode) => void;
   onPressPlus?: () => void;
   onPressMic?: () => void;
 }
-
-const AGENTS: { id: AgentId; label: string }[] = [
-  { id: 'antigravity', label: 'Antigravity' },
-  { id: 'codex', label: 'Codex' },
-];
-
-const EFFORTS: { id: ReasoningEffort; label: string }[] = [
-  { id: 'low', label: 'Low' },
-  { id: 'medium', label: 'Medium' },
-  { id: 'high', label: 'High' },
-];
 
 const MODES: { id: AgentExecutionMode; label: string }[] = [
   { id: 'plan', label: 'Plan' },
@@ -55,16 +41,23 @@ const MODES: { id: AgentExecutionMode; label: string }[] = [
   { id: 'auto', label: 'Auto' },
 ];
 
+function splitModelLabel(label: string): { name: string; tier?: string } {
+  const match = label.match(/^(.*?)\s*\(([^)]+)\)\s*$/);
+  if (match && match[1] && match[2]) {
+    return { name: match[1].trim(), tier: match[2].trim() };
+  }
+  return { name: label };
+}
+
 export function FloatingComposer({
   value,
   onChangeText,
   onSubmit,
   onCancel,
   isRunning = false,
-  agentId,
-  onChangeAgent,
-  effort,
-  onChangeEffort,
+  models,
+  selectedModelId,
+  onChangeModel,
   mode,
   onChangeMode,
   onPressPlus,
@@ -72,10 +65,9 @@ export function FloatingComposer({
 }: FloatingComposerProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
 
-  const agentLabel =
-    AGENTS.find((a) => a.id === agentId)?.label ?? String(agentId);
-  const effortLabel =
-    EFFORTS.find((e) => e.id === effort)?.label ?? effort;
+  const selectedModel =
+    models.find((m) => m.id === selectedModelId) ?? models[0];
+  const display = splitModelLabel(selectedModel?.label ?? 'Antigravity Default');
   const canSend = value.trim().length > 0;
 
   return (
@@ -101,8 +93,12 @@ export function FloatingComposer({
               style={styles.selectorBtn}
               onPress={() => setPickerOpen(true)}
             >
-              <Text style={styles.agentText}>{agentLabel}</Text>
-              <Text style={styles.effortText}>{effortLabel}</Text>
+              <Text style={styles.modelName} numberOfLines={1}>
+                {display.name}
+              </Text>
+              {display.tier ? (
+                <Text style={styles.modelTier}>{display.tier}</Text>
+              ) : null}
               <Gauge size={14} color={colors.warning} />
               <ChevronDown size={14} color={colors.textMuted} />
             </Pressable>
@@ -133,56 +129,13 @@ export function FloatingComposer({
         </View>
       </View>
 
-      <Modal visible={pickerOpen} transparent animationType="fade">
+      <Modal visible={pickerOpen} transparent animationType="slide">
         <Pressable
           style={styles.modalBackdrop}
           onPress={() => setPickerOpen(false)}
         >
           <Pressable style={styles.sheet} onPress={() => {}}>
-            <Text style={styles.sheetTitle}>Agent & Execution</Text>
-
-            <Text style={styles.groupLabel}>Agent</Text>
-            <View style={styles.chipRow}>
-              {AGENTS.map((item) => (
-                <Pressable
-                  key={item.id}
-                  style={[
-                    styles.chip,
-                    agentId === item.id && styles.chipActive,
-                  ]}
-                  onPress={() => onChangeAgent(item.id)}
-                >
-                  <Text
-                    style={[
-                      styles.chipText,
-                      agentId === item.id && styles.chipTextActive,
-                    ]}
-                  >
-                    {item.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-
-            <Text style={styles.groupLabel}>Reasoning Effort</Text>
-            <View style={styles.chipRow}>
-              {EFFORTS.map((item) => (
-                <Pressable
-                  key={item.id}
-                  style={[styles.chip, effort === item.id && styles.chipActive]}
-                  onPress={() => onChangeEffort(item.id)}
-                >
-                  <Text
-                    style={[
-                      styles.chipText,
-                      effort === item.id && styles.chipTextActive,
-                    ]}
-                  >
-                    {item.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
+            <Text style={styles.sheetTitle}>Antigravity Model & Mode</Text>
 
             <Text style={styles.groupLabel}>Permission Mode</Text>
             <View style={styles.chipRow}>
@@ -204,12 +157,41 @@ export function FloatingComposer({
               ))}
             </View>
 
-            <Pressable
-              style={styles.doneBtn}
-              onPress={() => setPickerOpen(false)}
-            >
-              <Text style={styles.doneText}>Done</Text>
-            </Pressable>
+            <Text style={styles.groupLabel}>
+              Models from agy CLI ({models.length})
+            </Text>
+            <ScrollView style={styles.modelList}>
+              {models.length === 0 ? (
+                <Text style={styles.emptyModels}>
+                  No models loaded yet. Pull to refresh or check agy CLI login.
+                </Text>
+              ) : (
+                models.map((m) => {
+                  const isSelected = m.id === (selectedModel?.id ?? '');
+                  return (
+                    <Pressable
+                      key={m.id}
+                      style={[
+                        styles.modelRow,
+                        isSelected && styles.modelRowActive,
+                      ]}
+                      onPress={() => {
+                        onChangeModel(m.id);
+                        setPickerOpen(false);
+                      }}
+                    >
+                      <View style={styles.modelRowInfo}>
+                        <Text style={styles.modelRowLabel}>{m.label}</Text>
+                        <Text style={styles.modelRowId}>{m.id}</Text>
+                      </View>
+                      {isSelected ? (
+                        <Check size={16} color={colors.accent} />
+                      ) : null}
+                    </Pressable>
+                  );
+                })
+              )}
+            </ScrollView>
           </Pressable>
         </Pressable>
       </Modal>
@@ -249,7 +231,8 @@ const styles = StyleSheet.create({
   leftTools: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
+    flex: 1,
   },
   rightTools: {
     flexDirection: 'row',
@@ -264,14 +247,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     paddingVertical: 4,
-    paddingHorizontal: 6,
+    paddingHorizontal: 4,
+    flexShrink: 1,
   },
-  agentText: {
+  modelName: {
     color: colors.text,
     fontSize: 13,
     fontWeight: '600',
+    flexShrink: 1,
   },
-  effortText: {
+  modelTier: {
     color: colors.textMuted,
     fontSize: 13,
     fontWeight: '500',
@@ -308,6 +293,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: 20,
     gap: 12,
+    maxHeight: '75%',
   },
   sheetTitle: {
     color: colors.text,
@@ -345,16 +331,38 @@ const styles = StyleSheet.create({
   chipTextActive: {
     color: colors.text,
   },
-  doneBtn: {
-    marginTop: 8,
-    backgroundColor: colors.text,
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
+  modelList: {
+    maxHeight: 340,
   },
-  doneText: {
-    color: '#000000',
+  modelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    marginBottom: 4,
+  },
+  modelRowActive: {
+    backgroundColor: colors.accentSoft,
+  },
+  modelRowInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  modelRowLabel: {
+    color: colors.text,
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '600',
+  },
+  modelRowId: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontFamily: 'monospace',
+  },
+  emptyModels: {
+    color: colors.textMuted,
+    fontSize: 13,
+    paddingVertical: 12,
   },
 });

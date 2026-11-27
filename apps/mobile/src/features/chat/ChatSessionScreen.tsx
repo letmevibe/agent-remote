@@ -13,11 +13,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import type {
   AgentExecutionMode,
-  AgentId,
   GitDiffResponse,
+  ModelInfo,
   PermissionDecision,
   PermissionRequestPayload,
-  ReasoningEffort,
   SessionStatus,
   StreamEventEnvelope,
 } from '@agent-remote/protocol';
@@ -34,7 +33,11 @@ import { FilesChangedBar } from '@/components/FilesChangedBar';
 import { FloatingComposer } from '@/components/FloatingComposer';
 import { MessageContent } from '@/components/MessageContent';
 import { ToolCallCard } from '@/components/ToolCallCard';
-import { fetchSessions, fetchWorkspaceDiff } from '@/core/network/apiClient';
+import {
+  fetchModels,
+  fetchSessions,
+  fetchWorkspaceDiff,
+} from '@/core/network/apiClient';
 import { getBridgeSocket } from '@/core/network/socketClient';
 import { loadActiveHost, type SavedHost } from '@/core/storage/hostStore';
 import { colors } from '@/theme/colors';
@@ -104,8 +107,8 @@ export function ChatSessionScreen({ sessionId }: { sessionId: string }) {
   const [title, setTitle] = useState('Agent Session');
   const [items, setItems] = useState<TimelineItem[]>([]);
   const [status, setStatus] = useState<SessionStatus>('idle');
-  const [agentId, setAgentId] = useState<AgentId>('antigravity');
-  const [effort, setEffort] = useState<ReasoningEffort>('medium');
+  const [models, setModels] = useState<ModelInfo[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState<string | undefined>();
   const [mode, setMode] = useState<AgentExecutionMode>('accept-edits');
   const [input, setInput] = useState('');
   const [diffSummary, setDiffSummary] = useState<GitDiffResponse | null>(null);
@@ -236,14 +239,19 @@ export function ChatSessionScreen({ sessionId }: { sessionId: string }) {
       if (!saved) return;
       void refreshDiff(saved);
       try {
-        const all = await fetchSessions(saved);
+        const [all, modelList] = await Promise.all([
+          fetchSessions(saved),
+          fetchModels(saved).catch(() => []),
+        ]);
+        setModels(modelList);
         const found = all.find((s) => s.id === sessionId);
         if (found) {
           setTitle(found.title);
-          setAgentId(found.agentId);
           setMode(found.mode);
-          if (found.effort) setEffort(found.effort);
           setStatus(found.status);
+          setSelectedModelId(found.model ?? modelList[0]?.id);
+        } else if (modelList[0]) {
+          setSelectedModelId(modelList[0].id);
         }
       } catch {
         // Keep default title
@@ -294,7 +302,12 @@ export function ChatSessionScreen({ sessionId }: { sessionId: string }) {
     const socket = getBridgeSocket(host);
     const text = input.trim();
     setInput('');
-    socket.emit('session:prompt', { sessionId, text, mode, effort });
+    socket.emit('session:prompt', {
+      sessionId,
+      text,
+      mode,
+      model: selectedModelId,
+    });
   };
 
   const handleCancel = () => {
@@ -376,10 +389,9 @@ export function ChatSessionScreen({ sessionId }: { sessionId: string }) {
           onSubmit={handleSend}
           onCancel={handleCancel}
           isRunning={status === 'running'}
-          agentId={agentId}
-          onChangeAgent={setAgentId}
-          effort={effort}
-          onChangeEffort={setEffort}
+          models={models}
+          selectedModelId={selectedModelId}
+          onChangeModel={setSelectedModelId}
           mode={mode}
           onChangeMode={setMode}
           onPressMic={() =>

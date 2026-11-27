@@ -70,6 +70,22 @@ export async function startBridgeServer(
     res.json({ ok: true, version: '0.1.0' });
   });
 
+  const buildHostInfo = async (): Promise<HostInfo> => {
+    const [agents, models] = await Promise.all([
+      registry.detectAll(),
+      registry.get('antigravity')?.listModels?.() ?? Promise.resolve([]),
+    ]);
+    return {
+      hostId: pairing.getHostId(),
+      hostName: config.hostName,
+      platform: `${os.platform()}-${os.arch()}`,
+      workspacePath: config.workspacePath,
+      bridgeVersion: '0.1.0',
+      agents,
+      models,
+    };
+  };
+
   app.post('/api/pair', async (req, res) => {
     const pairCode = String(req.body?.pairCode ?? '');
     const deviceToken = pairing.exchangePairCode(pairCode);
@@ -77,30 +93,20 @@ export async function startBridgeServer(
       res.status(401).json({ error: 'Invalid pairing code' });
       return;
     }
-    const agents = await registry.detectAll();
-    const host: HostInfo = {
-      hostId: pairing.getHostId(),
-      hostName: config.hostName,
-      platform: `${os.platform()}-${os.arch()}`,
-      workspacePath: config.workspacePath,
-      bridgeVersion: '0.1.0',
-      agents,
-    };
+    const host = await buildHostInfo();
     const response: PairResponse = { deviceToken, host };
     res.json(response);
   });
 
   app.get('/api/host', requireAuth, async (_req, res) => {
-    const agents = await registry.detectAll();
-    const host: HostInfo = {
-      hostId: pairing.getHostId(),
-      hostName: config.hostName,
-      platform: `${os.platform()}-${os.arch()}`,
-      workspacePath: config.workspacePath,
-      bridgeVersion: '0.1.0',
-      agents,
-    };
+    const host = await buildHostInfo();
     res.json(host);
+  });
+
+  app.get('/api/models', requireAuth, async (_req, res) => {
+    const models =
+      (await registry.get('antigravity')?.listModels?.()) ?? [];
+    res.json({ models });
   });
 
   app.get('/api/sessions', requireAuth, async (_req, res) => {

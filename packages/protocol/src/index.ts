@@ -10,6 +10,11 @@ export interface ProjectInfo {
   path: string;
 }
 
+export interface ModelInfo {
+  id: string;
+  label: string;
+}
+
 export type SessionStatus =
   | 'idle'
   | 'running'
@@ -35,6 +40,7 @@ export interface HostInfo {
   workspacePath: string;
   bridgeVersion: string;
   agents: AgentDescriptor[];
+  models: ModelInfo[];
 }
 
 export interface PairPayload {

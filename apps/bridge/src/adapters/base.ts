@@ -1,6 +1,7 @@
 import type {
   AgentDescriptor,
   AgentExecutionMode,
+  ModelInfo,
   PermissionDecision,
   ReasoningEffort,
   StreamEventPayload,
@@ -32,5 +33,6 @@ export interface AgentAdapter {
   readonly supportsResume: boolean;
   readonly supportsApprovals: boolean;
   detect(): Promise<AgentDescriptor>;
+  listModels?(): Promise<ModelInfo[]>;
   runTurn(ctx: AgentTurnContext): AgentTurnHandle;
 }

@@ -2,7 +2,7 @@ import { spawn, execFile } from 'node:child_process';
 import crypto from 'node:crypto';
 import readline from 'node:readline';
 import { promisify } from 'node:util';
-import type { AgentDescriptor } from '@agent-remote/protocol';
+import type { AgentDescriptor, ModelInfo } from '@agent-remote/protocol';
 import type { AgentAdapter, AgentTurnContext, AgentTurnHandle } from './base.js';
 
 const execFileAsync = promisify(execFile);
@@ -43,6 +43,38 @@ export class AntigravityAdapter implements AgentAdapter {
   readonly protocol = 'stream-json' as const;
   readonly supportsResume = true;
   readonly supportsApprovals = true;
+  private cachedModels: { items: ModelInfo[]; expiresAt: number } | null = null;
+
+  async listModels(): Promise<ModelInfo[]> {
+    if (this.cachedModels && Date.now() < this.cachedModels.expiresAt) {
+      return this.cachedModels.items;
+    }
+
+    try {
+      const { stdout } = await execFileAsync(this.command, ['models'], {
+        timeout: 15000,
+      });
+      const items: ModelInfo[] = [];
+      for (const line of stdout.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.includes('\t')) continue;
+        const [id, ...rest] = trimmed.split('\t');
+        const label = rest.join(' ').trim();
+        if (id && label) {
+          items.push({ id: id.trim(), label });
+        }
+      }
+      if (items.length > 0) {
+        this.cachedModels = {
+          items,
+          expiresAt: Date.now() + 5 * 60 * 1000,
+        };
+      }
+      return items;
+    } catch {
+      return this.cachedModels?.items ?? [];
+    }
+  }
 
   async detect(): Promise<AgentDescriptor> {
     try {
@@ -79,8 +111,7 @@ export class AntigravityAdapter implements AgentAdapter {
 
     if (ctx.model) {
       args.push('--model', ctx.model);
-    }
-    if (ctx.effort) {
+    } else if (ctx.effort) {
       args.push('--effort', ctx.effort);
     }
     if (ctx.resumeConversationId) {

@@ -2,6 +2,14 @@ export type AgentId = 'antigravity' | 'codex' | (string & {});
 
 export type AgentExecutionMode = 'plan' | 'accept-edits' | 'auto';
 
+export type ReasoningEffort = 'low' | 'medium' | 'high';
+
+export interface ProjectInfo {
+  id: string;
+  name: string;
+  path: string;
+}
+
 export type SessionStatus =
   | 'idle'
   | 'running'
@@ -47,6 +55,7 @@ export interface SessionSummary {
   agentId: AgentId;
   workspacePath: string;
   mode: AgentExecutionMode;
+  effort?: ReasoningEffort;
   model?: string;
   status: SessionStatus;
   createdAt: string;
@@ -60,6 +69,7 @@ export interface CreateSessionRequest {
   workspacePath?: string;
   title?: string;
   mode?: AgentExecutionMode;
+  effort?: ReasoningEffort;
   model?: string;
   initialPrompt?: string;
 }
@@ -68,6 +78,7 @@ export interface SendPromptRequest {
   sessionId: string;
   text: string;
   mode?: AgentExecutionMode;
+  effort?: ReasoningEffort;
   model?: string;
 }
 
@@ -157,6 +168,8 @@ export interface GitDiffResponse {
   workspacePath: string;
   branch: string;
   files: GitFileChange[];
+  totalAdditions: number;
+  totalDeletions: number;
   diff: string;
 }
 

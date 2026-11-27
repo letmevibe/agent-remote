@@ -68,7 +68,7 @@ export function SessionsHubScreen() {
   const [draft, setDraft] = useState('');
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [selectedModelId, setSelectedModelId] = useState<string | undefined>();
-  const [mode, setMode] = useState<AgentExecutionMode>('accept-edits');
+  const [mode, setMode] = useState<AgentExecutionMode>('auto');
 
   const loadData = useCallback(async () => {
     const saved = await loadActiveHost();

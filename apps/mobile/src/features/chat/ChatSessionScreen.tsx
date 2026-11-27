@@ -118,7 +118,7 @@ export function ChatSessionScreen({ sessionId }: { sessionId: string }) {
   const [status, setStatus] = useState<SessionStatus>('idle');
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [selectedModelId, setSelectedModelId] = useState<string | undefined>();
-  const [mode, setMode] = useState<AgentExecutionMode>('accept-edits');
+  const [mode, setMode] = useState<AgentExecutionMode>('auto');
   const [input, setInput] = useState('');
   const [diffSummary, setDiffSummary] = useState<GitDiffResponse | null>(null);
   const [pendingApproval, setPendingApproval] =
@@ -318,12 +318,27 @@ export function ChatSessionScreen({ sessionId }: { sessionId: string }) {
     const socket = getBridgeSocket(host);
     const text = input.trim();
     setInput('');
-    socket.emit('session:prompt', {
-      sessionId,
-      text,
-      mode,
-      model: selectedModelId,
-    });
+    socket.emit(
+      'session:prompt',
+      {
+        sessionId,
+        text,
+        mode,
+        model: selectedModelId,
+      },
+      (res) => {
+        if (res && !res.ok && res.error) {
+          setItems((prev) => [
+            ...prev,
+            {
+              id: `ack-err-${Date.now()}`,
+              kind: 'error',
+              text: res.error ?? 'Failed to send message',
+            },
+          ]);
+        }
+      },
+    );
   };
 
   const handleCancel = () => {

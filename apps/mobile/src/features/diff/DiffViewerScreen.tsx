@@ -2,12 +2,12 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import type { GitDiffResponse } from '@agent-remote/protocol';
 import { GitBranch } from 'lucide-react-native';
 import { fetchWorkspaceDiff } from '@/core/network/apiClient';
@@ -48,7 +48,7 @@ export function DiffViewerScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={

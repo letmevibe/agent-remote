@@ -5,11 +5,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  SafeAreaView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import type {
   AgentExecutionMode,
@@ -313,7 +313,7 @@ export function ChatSessionScreen({ sessionId }: { sessionId: string }) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       {/* Custom Sleek Top Header */}
       <View style={styles.topBar}>
         <Pressable style={styles.iconBtn} onPress={() => router.back()}>
@@ -340,7 +340,7 @@ export function ChatSessionScreen({ sessionId }: { sessionId: string }) {
 
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <FlatList
           ref={listRef}

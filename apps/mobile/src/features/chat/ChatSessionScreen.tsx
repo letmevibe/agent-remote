@@ -19,6 +19,7 @@ import type {
 } from '@agent-remote/protocol';
 import { Send, Square } from 'lucide-react-native';
 import { ApprovalSheet } from '@/components/ApprovalSheet';
+import { MessageContent } from '@/components/MessageContent';
 import { StatusBadge } from '@/components/StatusBadge';
 import { ToolCallCard } from '@/components/ToolCallCard';
 import { getBridgeSocket } from '@/core/network/socketClient';
@@ -64,9 +65,13 @@ const TimelineRow = memo(function TimelineRow({ item }: { item: TimelineItem }) 
   const isUser = item.kind === 'user';
   return (
     <View style={[styles.bubble, isUser ? styles.userBubble : styles.assistantBubble]}>
-      <Text style={styles.bubbleText} selectable>
-        {item.text}
-      </Text>
+      {isUser ? (
+        <Text style={styles.bubbleText} selectable>
+          {item.text}
+        </Text>
+      ) : (
+        <MessageContent text={item.text} />
+      )}
     </View>
   );
 });
@@ -80,6 +85,7 @@ export function ChatSessionScreen({ sessionId }: { sessionId: string }) {
   const [pendingApproval, setPendingApproval] =
     useState<PermissionRequestPayload | null>(null);
 
+  const listRef = useRef<FlatList<TimelineItem>>(null);
   const lastSeqRef = useRef(0);
   const pendingEventsRef = useRef<StreamEventEnvelope[]>([]);
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -251,10 +257,12 @@ export function ChatSessionScreen({ sessionId }: { sessionId: string }) {
         keyboardVerticalOffset={84}
       >
         <FlatList
+          ref={listRef}
           data={items}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => <TimelineRow item={item} />}
           contentContainerStyle={styles.listContent}
+          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
           removeClippedSubviews
         />
 

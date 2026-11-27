@@ -8,7 +8,7 @@ interface MessageSegment {
   content: string;
 }
 
-function parseSegments(raw: string): MessageSegment[] {
+function parseFencedBlocks(raw: string): MessageSegment[] {
   const segments: MessageSegment[] = [];
   const regex = /```([a-zA-Z0-9_-]*)\n?([\s\S]*?)```/g;
   let lastIndex = 0;
@@ -28,11 +28,74 @@ function parseSegments(raw: string): MessageSegment[] {
   }
 
   if (lastIndex < raw.length) {
-    const remaining = raw.slice(lastIndex);
+    const remaining = raw.slice(lastIndex).trim();
     if (remaining) segments.push({ type: 'text', content: remaining });
   }
 
   return segments.length > 0 ? segments : [{ type: 'text', content: raw }];
+}
+
+function renderInlineMarkdown(line: string, keyPrefix: string) {
+  const tokens = line.split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
+  return tokens.map((token, idx) => {
+    if (token.startsWith('`') && token.endsWith('`') && token.length > 2) {
+      return (
+        <Text key={`${keyPrefix}-${idx}`} style={styles.inlineCode}>
+          {' '}
+          {token.slice(1, -1)}{' '}
+        </Text>
+      );
+    }
+    if (token.startsWith('**') && token.endsWith('**') && token.length > 4) {
+      return (
+        <Text key={`${keyPrefix}-${idx}`} style={styles.bold}>
+          {token.slice(2, -2)}
+        </Text>
+      );
+    }
+    return <Text key={`${keyPrefix}-${idx}`}>{token}</Text>;
+  });
+}
+
+function RichTextBlock({ content }: { content: string }) {
+  const lines = content.split('\n');
+  return (
+    <View style={styles.linesWrap}>
+      {lines.map((line, idx) => {
+        const trimmed = line.trim();
+        if (!trimmed) {
+          return <View key={idx} style={styles.spacer} />;
+        }
+
+        if (/^#{1,3}\s+/.test(trimmed)) {
+          const heading = trimmed.replace(/^#{1,3}\s+/, '');
+          return (
+            <Text key={idx} style={styles.heading} selectable>
+              {heading}
+            </Text>
+          );
+        }
+
+        if (/^[-*]\s+/.test(trimmed)) {
+          const bulletText = trimmed.replace(/^[-*]\s+/, '');
+          return (
+            <View key={idx} style={styles.bulletRow}>
+              <Text style={styles.bulletDot}>•</Text>
+              <Text style={styles.text} selectable>
+                {renderInlineMarkdown(bulletText, `b-${idx}`)}
+              </Text>
+            </View>
+          );
+        }
+
+        return (
+          <Text key={idx} style={styles.text} selectable>
+            {renderInlineMarkdown(line, `p-${idx}`)}
+          </Text>
+        );
+      })}
+    </View>
+  );
 }
 
 export const MessageContent = memo(function MessageContent({
@@ -40,7 +103,7 @@ export const MessageContent = memo(function MessageContent({
 }: {
   text: string;
 }) {
-  const segments = parseSegments(text);
+  const segments = parseFencedBlocks(text);
 
   return (
     <View style={styles.container}>
@@ -55,9 +118,7 @@ export const MessageContent = memo(function MessageContent({
             </ScrollView>
           </View>
         ) : (
-          <Text key={idx} style={styles.text} selectable>
-            {seg.content}
-          </Text>
+          <RichTextBlock key={idx} content={seg.content} />
         ),
       )}
     </View>
@@ -65,15 +126,50 @@ export const MessageContent = memo(function MessageContent({
 });
 
 const styles = StyleSheet.create({
-  container: { gap: 8 },
-  text: { color: colors.text, fontSize: 14, lineHeight: 20 },
+  container: { gap: 10 },
+  linesWrap: { gap: 4 },
+  spacer: { height: 6 },
+  heading: {
+    color: colors.text,
+    fontSize: 17,
+    fontWeight: '700',
+    marginTop: 6,
+    marginBottom: 2,
+  },
+  text: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 15,
+    lineHeight: 23,
+  },
+  bold: {
+    fontWeight: '700',
+    color: colors.text,
+  },
+  inlineCode: {
+    backgroundColor: '#191920',
+    color: '#E2E8F0',
+    fontFamily: 'monospace',
+    fontSize: 13,
+  },
+  bulletRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    paddingLeft: 4,
+  },
+  bulletDot: {
+    color: colors.text,
+    fontSize: 15,
+    lineHeight: 23,
+  },
   codeBlock: {
-    backgroundColor: '#090D14',
+    backgroundColor: '#0E0E12',
     borderColor: colors.border,
     borderWidth: 1,
-    borderRadius: 10,
-    padding: 10,
-    gap: 4,
+    borderRadius: 12,
+    padding: 12,
+    gap: 6,
   },
   codeLang: {
     color: colors.textMuted,
@@ -85,6 +181,6 @@ const styles = StyleSheet.create({
     color: '#D8E2F4',
     fontFamily: 'monospace',
     fontSize: 12,
-    lineHeight: 17,
+    lineHeight: 18,
   },
 });

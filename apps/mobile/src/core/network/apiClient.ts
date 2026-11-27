@@ -3,6 +3,7 @@ import type {
   GitDiffResponse,
   HostInfo,
   PairResponse,
+  ProjectInfo,
   SessionSummary,
 } from '@agent-remote/protocol';
 import type { SavedHost } from '../storage/hostStore';
@@ -71,10 +72,24 @@ export async function createSession(
   return data.session;
 }
 
+export async function fetchProjects(host: SavedHost): Promise<ProjectInfo[]> {
+  const data = await requestJson<{ projects: ProjectInfo[] }>(
+    `${host.url}/api/projects`,
+    {
+      headers: { Authorization: `Bearer ${host.deviceToken}` },
+    },
+  );
+  return data.projects;
+}
+
 export async function fetchWorkspaceDiff(
   host: SavedHost,
+  workspacePath?: string,
 ): Promise<GitDiffResponse> {
-  return requestJson<GitDiffResponse>(`${host.url}/api/diff`, {
+  const qs = workspacePath
+    ? `?workspacePath=${encodeURIComponent(workspacePath)}`
+    : '';
+  return requestJson<GitDiffResponse>(`${host.url}/api/diff${qs}`, {
     headers: { Authorization: `Bearer ${host.deviceToken}` },
   });
 }

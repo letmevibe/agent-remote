@@ -2,6 +2,7 @@ import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   FlatList,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -9,10 +10,12 @@ import {
   Text,
   View,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import type {
   AgentExecutionMode,
+  AttachmentRef,
   GitDiffResponse,
   ModelInfo,
   PermissionDecision,
@@ -37,13 +40,14 @@ import {
   fetchModels,
   fetchSessions,
   fetchWorkspaceDiff,
+  uploadImageAttachment,
 } from '@/core/network/apiClient';
 import { getBridgeSocket } from '@/core/network/socketClient';
 import { loadActiveHost, type SavedHost } from '@/core/storage/hostStore';
 import { colors } from '@/theme/colors';
 
 type TimelineItem =
-  | { id: string; kind: 'user'; text: string }
+  | { id: string; kind: 'user'; text: string; attachments?: AttachmentRef[] }
   | { id: string; kind: 'assistant'; text: string; timestamp?: string }
   | { id: string; kind: 'thinking'; text: string }
   | { id: string; kind: 'error'; text: string }
@@ -88,6 +92,23 @@ const TimelineRow = memo(function TimelineRow({ item }: { item: TimelineItem }) 
   if (item.kind === 'user') {
     return (
       <View style={styles.userBubble}>
+        {item.attachments && item.attachments.length > 0 ? (
+          <View style={styles.userThumbs}>
+            {item.attachments.map((att) =>
+              att.localUri ? (
+                <Image
+                  key={att.id}
+                  source={{ uri: att.localUri }}
+                  style={styles.userThumbImg}
+                />
+              ) : (
+                <Text key={att.id} style={styles.attachTag}>
+                  [Image: {att.name}]
+                </Text>
+              ),
+            )}
+          </View>
+        ) : null}
         <Text style={styles.userText} selectable>
           {item.text}
         </Text>
@@ -120,6 +141,8 @@ export function ChatSessionScreen({ sessionId }: { sessionId: string }) {
   const [selectedModelId, setSelectedModelId] = useState<string | undefined>();
   const [mode, setMode] = useState<AgentExecutionMode>('auto');
   const [input, setInput] = useState('');
+  const [attachments, setAttachments] = useState<AttachmentRef[]>([]);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [diffSummary, setDiffSummary] = useState<GitDiffResponse | null>(null);
   const [pendingApproval, setPendingApproval] =
     useState<PermissionRequestPayload | null>(null);
@@ -150,7 +173,12 @@ export function ChatSessionScreen({ sessionId }: { sessionId: string }) {
           const p = env.payload;
 
           if (p.type === 'user.message') {
-            next.push({ id: p.messageId, kind: 'user', text: p.text });
+            next.push({
+              id: p.messageId,
+              kind: 'user',
+              text: p.text,
+              attachments: p.attachments,
+            });
           } else if (p.type === 'assistant.delta') {
             const idx = next.findIndex(
               (i) => i.id === p.messageId && i.kind === 'assistant',
@@ -328,11 +356,56 @@ export function ChatSessionScreen({ sessionId }: { sessionId: string }) {
     };
   }, [host, sessionId, applyEvents, enqueueEvent]);
 
+  const handlePickImage = async () => {
+    if (!host) return;
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert(
+        'Permission required',
+        'Allow photo library access to attach screenshots.',
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      base64: true,
+      quality: 0.8,
+    });
+
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    if (!asset.base64) {
+      Alert.alert('Upload failed', 'Could not read image data.');
+      return;
+    }
+
+    setUploadingAttachment(true);
+    try {
+      const uploaded = await uploadImageAttachment(host, {
+        name: asset.fileName || `photo-${Date.now()}.jpg`,
+        mimeType: asset.mimeType || 'image/jpeg',
+        base64: asset.base64,
+        localUri: asset.uri,
+      });
+      setAttachments((prev) => [...prev, uploaded]);
+    } catch (err) {
+      Alert.alert(
+        'Image upload failed',
+        err instanceof Error ? err.message : 'Unable to upload image to host.',
+      );
+    } finally {
+      setUploadingAttachment(false);
+    }
+  };
+
   const handleSend = () => {
-    if (!host || !input.trim()) return;
+    if (!host || (!input.trim() && attachments.length === 0)) return;
     const socket = getBridgeSocket(host);
-    const text = input.trim();
+    const text = input.trim() || 'Inspect the attached image(s).';
+    const currentAttachments = attachments;
     setInput('');
+    setAttachments([]);
     socket.emit(
       'session:prompt',
       {
@@ -340,6 +413,7 @@ export function ChatSessionScreen({ sessionId }: { sessionId: string }) {
         text,
         mode,
         model: selectedModelId,
+        attachments: currentAttachments.length > 0 ? currentAttachments : undefined,
       },
       (res) => {
         if (res && !res.ok && res.error) {
@@ -440,6 +514,12 @@ export function ChatSessionScreen({ sessionId }: { sessionId: string }) {
           onChangeModel={setSelectedModelId}
           mode={mode}
           onChangeMode={setMode}
+          attachments={attachments}
+          uploadingAttachment={uploadingAttachment}
+          onRemoveAttachment={(id) =>
+            setAttachments((prev) => prev.filter((a) => a.id !== id))
+          }
+          onPressPlus={() => void handlePickImage()}
           onPressMic={() =>
             Alert.alert('Voice Prompt', 'Voice input will be enabled in the next update.')
           }
@@ -497,6 +577,22 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 15,
     lineHeight: 22,
+  },
+  userThumbs: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 6,
+  },
+  userThumbImg: {
+    width: 120,
+    height: 120,
+    borderRadius: 10,
+  },
+  attachTag: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '600',
   },
   assistantBlock: {
     gap: 10,

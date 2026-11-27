@@ -1,4 +1,5 @@
 import type {
+  AttachmentRef,
   CreateSessionRequest,
   GitDiffResponse,
   HostInfo,
@@ -91,6 +92,28 @@ export async function fetchProjects(host: SavedHost): Promise<ProjectInfo[]> {
     },
   );
   return data.projects;
+}
+
+export async function uploadImageAttachment(
+  host: SavedHost,
+  payload: { name: string; mimeType: string; base64: string; localUri?: string },
+): Promise<AttachmentRef> {
+  const data = await requestJson<{ attachment: AttachmentRef }>(
+    `${host.url}/api/uploads`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${host.deviceToken}` },
+      body: JSON.stringify({
+        name: payload.name,
+        mimeType: payload.mimeType,
+        base64: payload.base64,
+      }),
+    },
+  );
+  return {
+    ...data.attachment,
+    localUri: payload.localUri,
+  };
 }
 
 export async function fetchWorkspaceDiff(

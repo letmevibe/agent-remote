@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import {
+  ActivityIndicator,
+  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -8,7 +10,11 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import type { AgentExecutionMode, ModelInfo } from '@agent-remote/protocol';
+import type {
+  AgentExecutionMode,
+  AttachmentRef,
+  ModelInfo,
+} from '@agent-remote/protocol';
 import {
   ArrowRight,
   Check,
@@ -17,6 +23,7 @@ import {
   Mic,
   Plus,
   Square,
+  X,
 } from 'lucide-react-native';
 import { colors } from '@/theme/colors';
 
@@ -31,6 +38,9 @@ interface FloatingComposerProps {
   onChangeModel: (modelId: string) => void;
   mode: AgentExecutionMode;
   onChangeMode: (mode: AgentExecutionMode) => void;
+  attachments?: AttachmentRef[];
+  uploadingAttachment?: boolean;
+  onRemoveAttachment?: (id: string) => void;
   onPressPlus?: () => void;
   onPressMic?: () => void;
 }
@@ -60,6 +70,9 @@ export function FloatingComposer({
   onChangeModel,
   mode,
   onChangeMode,
+  attachments = [],
+  uploadingAttachment = false,
+  onRemoveAttachment,
   onPressPlus,
   onPressMic,
 }: FloatingComposerProps) {
@@ -68,11 +81,47 @@ export function FloatingComposer({
   const selectedModel =
     models.find((m) => m.id === selectedModelId) ?? models[0];
   const display = splitModelLabel(selectedModel?.label ?? 'Antigravity Default');
-  const canSend = value.trim().length > 0;
+  const canSend =
+    (value.trim().length > 0 || attachments.length > 0) && !uploadingAttachment;
 
   return (
     <View style={styles.outerWrap}>
       <View style={styles.pill}>
+        {attachments.length > 0 || uploadingAttachment ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.attachmentStrip}
+          >
+            {attachments.map((att) => (
+              <View key={att.id} style={styles.thumbWrap}>
+                {att.localUri ? (
+                  <Image source={{ uri: att.localUri }} style={styles.thumb} />
+                ) : (
+                  <View style={[styles.thumb, styles.thumbFallback]}>
+                    <Text style={styles.thumbText} numberOfLines={1}>
+                      {att.name}
+                    </Text>
+                  </View>
+                )}
+                {onRemoveAttachment ? (
+                  <Pressable
+                    style={styles.removeBtn}
+                    onPress={() => onRemoveAttachment(att.id)}
+                  >
+                    <X size={11} color="#FFFFFF" />
+                  </Pressable>
+                ) : null}
+              </View>
+            ))}
+            {uploadingAttachment ? (
+              <View style={[styles.thumb, styles.thumbFallback]}>
+                <ActivityIndicator size="small" color={colors.accent} />
+              </View>
+            ) : null}
+          </ScrollView>
+        ) : null}
+
         <TextInput
           style={styles.input}
           value={value}
@@ -215,6 +264,43 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 10,
     gap: 10,
+  },
+  attachmentStrip: {
+    gap: 8,
+    paddingBottom: 2,
+  },
+  thumbWrap: {
+    position: 'relative',
+  },
+  thumb: {
+    width: 56,
+    height: 56,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  thumbFallback: {
+    backgroundColor: colors.surfaceElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 4,
+  },
+  thumbText: {
+    color: colors.textMuted,
+    fontSize: 10,
+  },
+  removeBtn: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#1F2937',
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   input: {
     color: colors.text,

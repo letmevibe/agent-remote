@@ -20,6 +20,12 @@
           "faceIDPermission": "Allow Agent Remote to protect your connected developer hosts with Face ID."
         }
       ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Agent Remote to attach screenshots and photos to your agent prompts."
+        }
+      ],
       "expo-secure-store"
     ],
     "experiments": {

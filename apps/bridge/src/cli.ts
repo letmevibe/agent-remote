@@ -5,8 +5,15 @@ import { startBridgeServer } from './server.js';
 
 async function main(): Promise<void> {
   const config = resolveConfig(process.argv.slice(2));
-  const { pairing, registry } = await startBridgeServer(config);
+  const { pairing, registry, store } = await startBridgeServer(config);
   const agents = await registry.detectAll();
+
+  const handleShutdown = () => {
+    store.flushSync();
+    process.exit(0);
+  };
+  process.on('SIGINT', handleShutdown);
+  process.on('SIGTERM', handleShutdown);
 
   const lanIp = detectLanAddress();
   const displayUrl = config.publicUrl ?? `http://${lanIp}:${config.port}`;

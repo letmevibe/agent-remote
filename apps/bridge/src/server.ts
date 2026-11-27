@@ -14,6 +14,7 @@ import { AdapterRegistry } from './adapters/registry.js';
 import { PairingService } from './auth/pairing.js';
 import type { BridgeConfig } from './config.js';
 import { SessionManager } from './sessions/manager.js';
+import { StateStore } from './storage/stateStore.js';
 import { getWorkspaceGitDiff } from './workspace/git.js';
 
 export interface StartedBridge {
@@ -21,10 +22,12 @@ export interface StartedBridge {
   pairing: PairingService;
   registry: AdapterRegistry;
   sessions: SessionManager;
+  store: StateStore;
 }
 
 export async function startBridgeServer(
   config: BridgeConfig,
+  options?: { statePath?: string },
 ): Promise<StartedBridge> {
   const app = express();
   app.use(cors());
@@ -35,7 +38,8 @@ export async function startBridgeServer(
     cors: { origin: '*' },
   });
 
-  const pairing = new PairingService();
+  const store = new StateStore(options?.statePath);
+  const pairing = new PairingService(store);
   const registry = new AdapterRegistry();
 
   const sessions = new SessionManager(
@@ -47,6 +51,7 @@ export async function startBridgeServer(
     (summary) => {
       io.emit('session:updated', summary);
     },
+    store,
   );
 
   const requireAuth: express.RequestHandler = (req, res, next) => {
@@ -172,5 +177,5 @@ export async function startBridgeServer(
     server.listen(config.port, config.host, () => resolve());
   });
 
-  return { server, pairing, registry, sessions };
+  return { server, pairing, registry, sessions, store };
 }

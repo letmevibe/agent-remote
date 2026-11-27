@@ -1,14 +1,23 @@
 import crypto from 'node:crypto';
 import type { PairPayload } from '@agent-remote/protocol';
+import type { StateStore } from '../storage/stateStore.js';
 
 export class PairingService {
   private readonly hostId: string;
-  private readonly validTokens = new Set<string>();
+  private readonly validTokens: Set<string>;
   private activePairCode: string;
 
-  constructor() {
-    this.hostId = crypto.randomUUID();
+  constructor(private readonly store?: StateStore) {
+    const persisted = store?.getState();
+    this.hostId = persisted?.hostId ?? crypto.randomUUID();
+    this.validTokens = new Set<string>(persisted?.validTokens ?? []);
     this.activePairCode = this.generateCode();
+
+    if (store && !persisted?.hostId) {
+      store.update((draft) => {
+        draft.hostId = this.hostId;
+      });
+    }
   }
 
   getHostId(): string {
@@ -40,6 +49,9 @@ export class PairingService {
     }
     const deviceToken = `ar_${crypto.randomBytes(24).toString('hex')}`;
     this.validTokens.add(deviceToken);
+    this.store?.update((draft) => {
+      draft.validTokens = Array.from(this.validTokens);
+    });
     return deviceToken;
   }
 

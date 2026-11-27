@@ -11,6 +11,7 @@ import type {
 } from '@agent-remote/protocol';
 import type { AgentTurnHandle } from '../adapters/base.js';
 import type { AdapterRegistry } from '../adapters/registry.js';
+import type { StateStore } from '../storage/stateStore.js';
 
 interface InternalSession {
   summary: SessionSummary;
@@ -29,7 +30,27 @@ export class SessionManager {
     private readonly defaultWorkspacePath: string,
     private readonly onEventBroadcast: (event: StreamEventEnvelope) => void,
     private readonly onSessionUpdated: (session: SessionSummary) => void,
-  ) {}
+    private readonly store?: StateStore,
+  ) {
+    const persisted = store?.getState().sessions ?? [];
+    for (const item of persisted) {
+      // Reset stale running status after a bridge restart
+      const summary: SessionSummary = {
+        ...item.summary,
+        status:
+          item.summary.status === 'running' ||
+          item.summary.status === 'waiting_approval'
+            ? 'idle'
+            : item.summary.status,
+        pendingApprovalCount: 0,
+      };
+      this.sessions.set(summary.id, {
+        summary,
+        events: item.events ?? [],
+        externalConversationId: item.externalConversationId,
+      });
+    }
+  }
 
   list(): SessionSummary[] {
     return Array.from(this.sessions.values())
@@ -70,6 +91,7 @@ export class SessionManager {
     };
 
     this.sessions.set(id, { summary, events: [] });
+    this.persist();
     this.onSessionUpdated(summary);
 
     if (req.initialPrompt?.trim()) {
@@ -121,7 +143,10 @@ export class SessionManager {
       model: session.summary.model,
       resumeConversationId: session.externalConversationId,
       onConversationId: (externalId) => {
-        session.externalConversationId = externalId;
+        if (session.externalConversationId !== externalId) {
+          session.externalConversationId = externalId;
+          this.persist();
+        }
       },
       onEvent: (payload) => {
         if (payload.type === 'permission.request') {
@@ -203,7 +228,18 @@ export class SessionManager {
       session.events.shift();
     }
 
+    this.persist();
     this.onEventBroadcast(envelope);
     return envelope;
+  }
+
+  private persist(): void {
+    this.store?.update((draft) => {
+      draft.sessions = Array.from(this.sessions.values()).map((s) => ({
+        summary: s.summary,
+        events: s.events.slice(-300),
+        externalConversationId: s.externalConversationId,
+      }));
+    });
   }
 }

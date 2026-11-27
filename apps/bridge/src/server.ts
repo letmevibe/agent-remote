@@ -49,12 +49,26 @@ export async function startBridgeServer(
     config.workspacePath,
     (event) => {
       io.to(`session:${event.sessionId}`).emit('session:event', event);
+      const p = event.payload;
+      if (p.type === 'user.message') {
+        console.log(`\n[Phone] ${p.text}`);
+      } else if (p.type === 'assistant.delta') {
+        process.stdout.write(p.delta);
+      } else if (p.type === 'tool.call') {
+        console.log(`\n[Tool] ${p.toolName}: ${p.summary}`);
+      } else if (p.type === 'turn.completed') {
+        console.log('\n[Done]');
+      } else if (p.type === 'session.status' && p.status === 'error' && p.error) {
+        console.error(`\n[Error] ${p.error}`);
+      }
     },
     (summary) => {
       io.emit('session:updated', summary);
     },
     store,
   );
+
+  await sessions.syncLocalAntigravitySessions();
 
   const requireAuth: express.RequestHandler = (req, res, next) => {
     const authHeader = req.headers.authorization ?? '';

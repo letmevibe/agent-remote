@@ -109,6 +109,10 @@ export class AntigravityAdapter implements AgentAdapter {
       ctx.mode,
     ];
 
+    if (ctx.mode === 'auto') {
+      args.push('--dangerously-skip-permissions');
+    }
+
     if (ctx.model) {
       args.push('--model', ctx.model);
     } else if (ctx.effort) {

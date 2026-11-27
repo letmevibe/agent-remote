@@ -182,12 +182,27 @@ export function ChatSessionScreen({ sessionId }: { sessionId: string }) {
               next.push({ id: thinkId, kind: 'thinking', text: p.delta });
             }
           } else if (p.type === 'tool.call') {
-            next.push({
-              id: p.callId,
-              kind: 'tool',
-              toolName: p.toolName,
-              summary: p.summary,
-            });
+            const existingIdx = next.findIndex(
+              (i) => i.id === p.callId && i.kind === 'tool',
+            );
+            if (existingIdx >= 0) {
+              const existing = next[existingIdx] as Extract<
+                TimelineItem,
+                { kind: 'tool' }
+              >;
+              next[existingIdx] = {
+                ...existing,
+                toolName: p.toolName,
+                summary: p.summary,
+              };
+            } else {
+              next.push({
+                id: p.callId,
+                kind: 'tool',
+                toolName: p.toolName,
+                summary: p.summary,
+              });
+            }
           } else if (p.type === 'tool.result') {
             const idx = next.findIndex(
               (i) => i.id === p.callId && i.kind === 'tool',

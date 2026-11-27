@@ -258,7 +258,7 @@ export class AntigravityAdapter implements AgentAdapter {
       }
 
       if (stepType && stepType !== 'user_input' && stepType !== 'thinking') {
-        const callId = `step-${step.step_index ?? crypto.randomUUID()}`;
+        const callId = `${assistantMessageId}-step-${step.step_index ?? crypto.randomUUID()}`;
         const toolName = step.tool_info?.name || step.tool_name || stepType;
         const params = step.tool_info?.parameters;
         const paramPreview =

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Alert, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { useRouter } from 'expo-router';
-import { LogOut, ShieldCheck } from 'lucide-react-native';
+import { LogOut, QrCode, ShieldCheck } from 'lucide-react-native';
 import { disconnectBridgeSocket } from '@/core/network/socketClient';
 import {
   clearActiveHost,
@@ -11,7 +11,7 @@ import {
 } from '@/core/storage/hostStore';
 import { colors } from '@/theme/colors';
 
-export default function SettingsTab() {
+export default function SettingsRoute() {
   const router = useRouter();
   const [host, setHost] = useState<SavedHost | null>(null);
 
@@ -48,6 +48,11 @@ export default function SettingsTab() {
           <Text style={styles.meta}>{host?.workspacePath ?? '—'}</Text>
         </View>
 
+        <Pressable style={styles.actionRow} onPress={() => router.push('/pair')}>
+          <QrCode size={18} color={colors.accent} />
+          <Text style={styles.actionText}>Pair Another Host</Text>
+        </Pressable>
+
         <Pressable style={styles.actionRow} onPress={() => void handleBiometricTest()}>
           <ShieldCheck size={18} color={colors.accent} />
           <Text style={styles.actionText}>Test Biometric Lock</Text>
@@ -71,8 +76,8 @@ export default function SettingsTab() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 16, gap: 14 },
-  heading: { color: colors.text, fontSize: 20, fontWeight: '700' },
+  content: { padding: 16, gap: 12 },
+  heading: { color: colors.text, fontSize: 18, fontWeight: '700' },
   card: {
     backgroundColor: colors.surface,
     borderColor: colors.border,

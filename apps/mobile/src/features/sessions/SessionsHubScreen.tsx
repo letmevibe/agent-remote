@@ -1,51 +1,91 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   RefreshControl,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import type { AgentId, HostInfo, SessionSummary } from '@agent-remote/protocol';
-import { Plus, QrCode, Terminal } from 'lucide-react-native';
-import { StatusBadge } from '@/components/StatusBadge';
+import type {
+  AgentExecutionMode,
+  AgentId,
+  ProjectInfo,
+  ReasoningEffort,
+  SessionSummary,
+} from '@agent-remote/protocol';
+import {
+  ChevronDown,
+  Folder,
+  FolderPlus,
+  ListFilter,
+  Plus,
+  QrCode,
+  RefreshCw,
+  Search,
+  Settings,
+  Terminal,
+} from 'lucide-react-native';
+import { FloatingComposer } from '@/components/FloatingComposer';
 import {
   createSession,
-  fetchHostInfo,
+  fetchProjects,
   fetchSessions,
 } from '@/core/network/apiClient';
 import { getBridgeSocket } from '@/core/network/socketClient';
 import { loadActiveHost, type SavedHost } from '@/core/storage/hostStore';
 import { colors } from '@/theme/colors';
 
+function formatRelativeTime(iso: string): string {
+  const diffMs = Math.max(0, Date.now() - new Date(iso).getTime());
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'now';
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
+
 export function SessionsHubScreen() {
   const router = useRouter();
   const [host, setHost] = useState<SavedHost | null>(null);
-  const [hostInfo, setHostInfo] = useState<HostInfo | null>(null);
+  const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Composer state for instant prompt launch from Home
+  const [draft, setDraft] = useState('');
+  const [agentId, setAgentId] = useState<AgentId>('antigravity');
+  const [effort, setEffort] = useState<ReasoningEffort>('medium');
+  const [mode, setMode] = useState<AgentExecutionMode>('accept-edits');
 
   const loadData = useCallback(async () => {
     const saved = await loadActiveHost();
     setHost(saved);
     if (!saved) {
       setLoading(false);
+      setRefreshing(false);
       return;
     }
 
     try {
-      const [info, list] = await Promise.all([
-        fetchHostInfo(saved),
+      const [projectList, sessionList] = await Promise.all([
+        fetchProjects(saved),
         fetchSessions(saved),
       ]);
-      setHostInfo(info);
-      setSessions(list);
+      setProjects(projectList);
+      setSessions(sessionList);
     } catch (err) {
       Alert.alert(
         'Host unreachable',
@@ -80,17 +120,51 @@ export function SessionsHubScreen() {
     };
   }, [host]);
 
-  const handleNewSession = async (agentId: AgentId) => {
+  const grouped = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    const filteredSessions = q
+      ? sessions.filter((s) => s.title.toLowerCase().includes(q))
+      : sessions;
+
+    return projects.map((project) => {
+      const list = filteredSessions.filter(
+        (s) => s.workspacePath.toLowerCase() === project.path.toLowerCase(),
+      );
+      return { project, sessions: list };
+    });
+  }, [projects, sessions, searchQuery]);
+
+  const handleStartSession = async (
+    workspacePath?: string,
+    initialPrompt?: string,
+  ) => {
     if (!host) return;
     try {
-      const created = await createSession(host, { agentId });
+      const title = initialPrompt
+        ? initialPrompt.slice(0, 48)
+        : undefined;
+      const created = await createSession(host, {
+        agentId,
+        workspacePath: workspacePath ?? host.workspacePath,
+        mode,
+        effort,
+        title,
+        initialPrompt,
+      });
       router.push(`/session/${created.id}`);
     } catch (err) {
       Alert.alert(
-        'Cannot create session',
+        'Cannot start session',
         err instanceof Error ? err.message : 'Unknown error',
       );
     }
+  };
+
+  const handleComposerSubmit = () => {
+    const text = draft.trim();
+    if (!text) return;
+    setDraft('');
+    void handleStartSession(host?.workspacePath, text);
   };
 
   if (loading) {
@@ -104,17 +178,15 @@ export function SessionsHubScreen() {
   if (!host) {
     return (
       <SafeAreaView style={styles.centered}>
-        <Terminal size={42} color={colors.accent} />
-        <Text style={styles.emptyTitle}>No Host Paired</Text>
+        <Terminal size={44} color={colors.accent} />
+        <Text style={styles.emptyTitle}>Agent Remote</Text>
         <Text style={styles.emptySubtitle}>
-          Connect your phone to a desktop running Agent Remote Bridge.
+          Scan the QR code from your desktop Host Bridge to control Antigravity,
+          Codex, and ACP coding agents smoothly on mobile.
         </Text>
-        <Pressable
-          style={styles.primaryBtn}
-          onPress={() => router.push('/pair')}
-        >
-          <QrCode size={18} color="#FFFFFF" />
-          <Text style={styles.primaryBtnText}>Pair Host</Text>
+        <Pressable style={styles.primaryBtn} onPress={() => router.push('/pair')}>
+          <QrCode size={18} color="#000000" />
+          <Text style={styles.primaryBtnText}>Pair Desktop Host</Text>
         </Pressable>
       </SafeAreaView>
     );
@@ -122,161 +194,382 @@ export function SessionsHubScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.hostName}>{host.hostName}</Text>
-          <Text style={styles.workspace} numberOfLines={1}>
-            {host.workspacePath}
-          </Text>
-        </View>
-        <Pressable style={styles.pairMiniBtn} onPress={() => router.push('/pair')}>
-          <QrCode size={18} color={colors.text} />
-        </Pressable>
-      </View>
-
-      <View style={styles.quickLaunchRow}>
-        {(hostInfo?.agents ?? [
-          { id: 'antigravity', name: 'Antigravity', available: true },
-          { id: 'codex', name: 'Codex', available: false },
-        ]).map((agent) => (
-          <Pressable
-            key={agent.id}
-            style={[
-              styles.launchChip,
-              !agent.available && styles.launchChipDisabled,
-            ]}
-            disabled={!agent.available}
-            onPress={() => void handleNewSession(agent.id)}
-          >
-            <Plus size={14} color={agent.available ? colors.accent : colors.textMuted} />
-            <Text style={styles.launchChipText}>{agent.name}</Text>
+      {/* Top Bar */}
+      <View style={styles.topBar}>
+        <View style={styles.topLeft}>
+          <View style={styles.brandMark}>
+            <Terminal size={16} color={colors.accent} />
+          </View>
+          <Pressable style={styles.hostPill} onPress={() => router.push('/pair')}>
+            <View style={styles.onlineDot} />
+            <Text style={styles.hostPillText} numberOfLines={1}>
+              {host.hostName}
+            </Text>
+            <ChevronDown size={14} color={colors.textMuted} />
           </Pressable>
-        ))}
-      </View>
+        </View>
 
-      <FlatList
-        data={sessions}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
-        refreshControl={
-          <RefreshControl
-            tintColor={colors.accent}
-            refreshing={refreshing}
-            onRefresh={() => {
+        <View style={styles.topRight}>
+          <Pressable
+            style={styles.topIconBtn}
+            onPress={() => setSearchOpen((prev) => !prev)}
+          >
+            <Search size={19} color={colors.textSecondary} />
+          </Pressable>
+          <Pressable
+            style={styles.topIconBtn}
+            onPress={() => router.push('/settings')}
+          >
+            <Settings size={19} color={colors.textSecondary} />
+          </Pressable>
+          <Pressable
+            style={styles.topIconBtn}
+            onPress={() => {
               setRefreshing(true);
               void loadData();
             }}
-          />
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyList}>
-            <Text style={styles.emptySubtitle}>
-              Tap an agent above to start a new mobile coding session.
-            </Text>
-          </View>
-        }
-        renderItem={({ item }) => (
-          <Pressable
-            style={styles.sessionCard}
-            onPress={() => router.push(`/session/${item.id}`)}
           >
-            <View style={styles.sessionRow}>
-              <Text style={styles.sessionTitle} numberOfLines={1}>
-                {item.title}
-              </Text>
-              <StatusBadge status={item.status} />
-            </View>
-            <Text style={styles.sessionMeta}>
-              {item.agentId} · {item.mode}
-            </Text>
+            <RefreshCw size={18} color={colors.textSecondary} />
           </Pressable>
-        )}
-      />
+        </View>
+      </View>
+
+      {searchOpen ? (
+        <View style={styles.searchWrap}>
+          <TextInput
+            style={styles.searchInput}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Filter conversations..."
+            placeholderTextColor={colors.textMuted}
+            autoFocus
+          />
+        </View>
+      ) : null}
+
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          style={styles.flex}
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={
+            <RefreshControl
+              tintColor={colors.accent}
+              refreshing={refreshing}
+              onRefresh={() => {
+                setRefreshing(true);
+                void loadData();
+              }}
+            />
+          }
+        >
+          {/* Projects Section Header */}
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionTitleRow}>
+              <Text style={styles.sectionTitle}>Projects</Text>
+              <ChevronDown size={14} color={colors.textMuted} />
+            </View>
+            <View style={styles.sectionActions}>
+              <Pressable
+                style={styles.smallIconBtn}
+                onPress={() => setSearchOpen((prev) => !prev)}
+              >
+                <ListFilter size={17} color={colors.textMuted} />
+              </Pressable>
+              <Pressable
+                style={styles.smallIconBtn}
+                onPress={() => router.push('/pair')}
+              >
+                <FolderPlus size={17} color={colors.textMuted} />
+              </Pressable>
+            </View>
+          </View>
+
+          {/* Project Groups */}
+          {grouped.map(({ project, sessions: projSessions }) => {
+            const isExpanded = Boolean(expandedProjects[project.id]);
+            const visibleSessions = isExpanded
+              ? projSessions
+              : projSessions.slice(0, 5);
+
+            return (
+              <View key={project.id} style={styles.projectGroup}>
+                <View style={styles.projectHeader}>
+                  <View style={styles.projectTitleRow}>
+                    <Folder size={16} color={colors.textMuted} />
+                    <Text style={styles.projectName} numberOfLines={1}>
+                      {project.name}
+                    </Text>
+                  </View>
+                  <Pressable
+                    style={styles.plusBtn}
+                    onPress={() => void handleStartSession(project.path)}
+                    hitSlop={8}
+                  >
+                    <Plus size={18} color={colors.textMuted} />
+                  </Pressable>
+                </View>
+
+                {visibleSessions.length === 0 ? (
+                  <Text style={styles.noConvText}>No conversations yet</Text>
+                ) : (
+                  <View style={styles.convList}>
+                    {visibleSessions.map((session) => {
+                      const isActive =
+                        session.status === 'running' ||
+                        session.status === 'waiting_approval';
+                      return (
+                        <Pressable
+                          key={session.id}
+                          style={styles.convRow}
+                          onPress={() => router.push(`/session/${session.id}`)}
+                        >
+                          <Text style={styles.convTitle} numberOfLines={1}>
+                            {session.title}
+                          </Text>
+                          {isActive ? (
+                            <View style={styles.activeDot} />
+                          ) : (
+                            <Text style={styles.convTime}>
+                              {formatRelativeTime(session.updatedAt)}
+                            </Text>
+                          )}
+                        </Pressable>
+                      );
+                    })}
+
+                    {projSessions.length > 5 ? (
+                      <Pressable
+                        onPress={() =>
+                          setExpandedProjects((prev) => ({
+                            ...prev,
+                            [project.id]: !isExpanded,
+                          }))
+                        }
+                      >
+                        <Text style={styles.seeAllText}>
+                          {isExpanded
+                            ? 'Show less'
+                            : `See all (${projSessions.length})`}
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                )}
+              </View>
+            );
+          })}
+        </ScrollView>
+
+        <FloatingComposer
+          value={draft}
+          onChangeText={setDraft}
+          onSubmit={handleComposerSubmit}
+          agentId={agentId}
+          onChangeAgent={setAgentId}
+          effort={effort}
+          onChangeEffort={setEffort}
+          mode={mode}
+          onChangeMode={setMode}
+          onPressPlus={() => void handleStartSession(host.workspacePath)}
+          onPressMic={() =>
+            Alert.alert('Voice Prompt', 'Voice input will be enabled in the next update.')
+          }
+        />
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
+  flex: { flex: 1 },
   centered: {
     flex: 1,
     backgroundColor: colors.bg,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 28,
-    gap: 12,
+    gap: 14,
   },
-  header: {
+  topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 8,
-  },
-  hostName: { color: colors.text, fontSize: 20, fontWeight: '700' },
-  workspace: { color: colors.textMuted, fontSize: 12, maxWidth: 270 },
-  pairMiniBtn: {
-    backgroundColor: colors.surfaceElevated,
-    borderColor: colors.border,
-    borderWidth: 1,
-    padding: 10,
-    borderRadius: 10,
-  },
-  quickLaunchRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  launchChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: 999,
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderSubtle,
   },
-  launchChipDisabled: { opacity: 0.45 },
-  launchChipText: { color: colors.text, fontSize: 13, fontWeight: '600' },
-  listContent: { padding: 16, gap: 10 },
-  sessionCard: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 14,
-    gap: 6,
-  },
-  sessionRow: {
+  topLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: 10,
   },
-  sessionTitle: { flex: 1, color: colors.text, fontSize: 15, fontWeight: '600' },
-  sessionMeta: { color: colors.textMuted, fontSize: 12 },
-  emptyTitle: { color: colors.text, fontSize: 20, fontWeight: '700' },
+  brandMark: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    backgroundColor: colors.surfaceElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  hostPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    maxWidth: 145,
+  },
+  onlineDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: colors.online,
+  },
+  hostPillText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  topRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  topIconBtn: {
+    padding: 7,
+  },
+  searchWrap: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderSubtle,
+  },
+  searchInput: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    color: colors.text,
+    fontSize: 14,
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 24,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  sectionTitle: {
+    color: colors.textMuted,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  sectionActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  smallIconBtn: {
+    padding: 4,
+  },
+  projectGroup: {
+    marginBottom: 20,
+  },
+  projectHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  projectTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  projectName: {
+    color: colors.textSecondary,
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  plusBtn: {
+    padding: 4,
+  },
+  noConvText: {
+    color: colors.textMuted,
+    fontSize: 14,
+    paddingLeft: 24,
+    paddingVertical: 4,
+  },
+  convList: {
+    paddingLeft: 24,
+    gap: 14,
+  },
+  convRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingVertical: 2,
+  },
+  convTitle: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '400',
+  },
+  convTime: {
+    color: colors.textMuted,
+    fontSize: 13,
+  },
+  activeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.accent,
+  },
+  seeAllText: {
+    color: colors.textMuted,
+    fontSize: 14,
+    paddingTop: 2,
+  },
+  emptyTitle: { color: colors.text, fontSize: 22, fontWeight: '700' },
   emptySubtitle: {
     color: colors.textMuted,
     fontSize: 14,
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 21,
   },
-  emptyList: { paddingTop: 48, alignItems: 'center' },
   primaryBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: colors.accent,
-    paddingHorizontal: 20,
+    backgroundColor: colors.text,
+    paddingHorizontal: 22,
     paddingVertical: 13,
-    borderRadius: 12,
+    borderRadius: 999,
     marginTop: 8,
   },
-  primaryBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 15 },
+  primaryBtnText: { color: '#000000', fontWeight: '700', fontSize: 15 },
 });

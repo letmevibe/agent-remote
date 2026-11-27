@@ -42,7 +42,7 @@ export function PairHostScreen() {
         deviceToken: result.deviceToken,
         workspacePath: result.host.workspacePath,
       });
-      router.replace('/(tabs)');
+      router.replace('/');
     } catch (err) {
       Alert.alert(
         'Pairing failed',

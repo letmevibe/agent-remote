@@ -46,6 +46,7 @@ type TimelineItem =
   | { id: string; kind: 'user'; text: string }
   | { id: string; kind: 'assistant'; text: string; timestamp?: string }
   | { id: string; kind: 'thinking'; text: string }
+  | { id: string; kind: 'error'; text: string }
   | {
       id: string;
       kind: 'tool';
@@ -72,6 +73,14 @@ const TimelineRow = memo(function TimelineRow({ item }: { item: TimelineItem }) 
       <View style={styles.thinkingBox}>
         <Text style={styles.thinkingLabel}>Thought process</Text>
         <Text style={styles.thinkingText}>{item.text}</Text>
+      </View>
+    );
+  }
+
+  if (item.kind === 'error') {
+    return (
+      <View style={styles.errorBox}>
+        <Text style={styles.errorText}>{item.text}</Text>
       </View>
     );
   }
@@ -202,6 +211,13 @@ export function ChatSessionScreen({ sessionId }: { sessionId: string }) {
             );
           } else if (p.type === 'session.status') {
             setStatus(p.status);
+            if (p.status === 'error' && p.error) {
+              next.push({
+                id: `err-${env.seq}`,
+                kind: 'error',
+                text: p.error,
+              });
+            }
           } else if (p.type === 'turn.completed') {
             shouldRefreshDiff = true;
           }
@@ -489,5 +505,18 @@ const styles = StyleSheet.create({
   runningLabel: {
     color: colors.textMuted,
     fontSize: 13,
+  },
+  errorBox: {
+    backgroundColor: colors.dangerSoft,
+    borderColor: colors.danger,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  errorText: {
+    color: colors.danger,
+    fontSize: 13,
+    lineHeight: 19,
   },
 });

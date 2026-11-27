@@ -72,7 +72,19 @@ Want to add your favorite coding agent? See [CONTRIBUTING.md](CONTRIBUTING.md) �
 
 ## Quick Start
 
-### 1. Clone & Install
+### Option A: One-Command Bridge (`npx`)
+
+Run inside any project folder on your dev machine:
+
+```bash
+npx agent-remote-cli
+```
+
+The terminal prints your local endpoint, a 6-character pairing code, detected agents (`agy`), and a **QR code**.
+
+> **Remote access outside Wi-Fi:** Start the bridge with `npx agent-remote-cli --public-url https://<your-tailscale-or-tunnel-url>` and scan the generated QR code.
+
+### Option B: Run from Source (Bridge + Mobile App)
 
 ```bash
 git clone https://github.com/letmevibe/agent-remote.git
@@ -81,19 +93,13 @@ npm install
 npm run build
 ```
 
-### 2. Start the Host Bridge on Your Dev Machine
+Start the Host Bridge and Mobile App in two terminals:
 
 ```bash
-npm run bridge:start -- --cwd /path/to/your/project
-```
+# Terminal 1 — Host Bridge
+npm run bridge:start
 
-The terminal prints your local endpoint, a 6-character pairing code, detected agents (`agy`, `codex`), and a **QR code**.
-
-> **Remote access outside Wi-Fi:** Start the bridge with `--public-url https://<your-tailscale-or-tunnel-url>` and scan the generated QR code.
-
-### 3. Run the Mobile App
-
-```bash
+# Terminal 2 — Mobile App (Expo Go)
 npm run mobile:start
 ```
 

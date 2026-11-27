@@ -8,11 +8,11 @@
     "apps/*"
   ],
   "scripts": {
-    "build": "npm run build --workspace=@agent-remote/protocol && npm run build --workspace=agent-remote",
-    "bridge:dev": "npm run dev --workspace=agent-remote",
-    "bridge:start": "npm run start --workspace=agent-remote",
+    "build": "npm run build --workspace=@agent-remote/protocol && npm run build --workspace=agent-remote-cli",
+    "bridge:dev": "npm run dev --workspace=agent-remote-cli",
+    "bridge:start": "npm run start --workspace=agent-remote-cli",
     "mobile:start": "npm run start --workspace=@agent-remote/mobile",
-    "typecheck": "npm run typecheck --workspace=@agent-remote/protocol && npm run typecheck --workspace=agent-remote && npm run typecheck --workspace=@agent-remote/mobile"
+    "typecheck": "npm run typecheck --workspace=@agent-remote/protocol && npm run typecheck --workspace=agent-remote-cli && npm run typecheck --workspace=@agent-remote/mobile"
   },
   "engines": {
     "node": ">=20.0.0"

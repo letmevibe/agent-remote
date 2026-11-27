@@ -1,137 +1,108 @@
 # Agent Remote
 
-> **Native mobile remote control for coding agents** — work with **Antigravity CLI**, **OpenAI Codex CLI**, and ACP-compatible agents from your phone with zero web lag.
+> **Native mobile remote control for Antigravity CLI (`agy`)** — steer your local coding agent, inspect git diffs, and attach screenshots from your phone with zero web lag.
 
+[![npm version](https://img.shields.io/npm/v/agent-remote-cli.svg)](https://www.npmjs.com/package/agent-remote-cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6.svg)](https://www.typescriptlang.org/)
 [![Expo / React Native](https://img.shields.io/badge/Mobile-Expo%20%2F%20React%20Native-000020.svg)](https://expo.dev/)
-[![Local-First](https://img.shields.io/badge/Architecture-Local--First-22C55E.svg)](#architecture)
+[![Local-First](https://img.shields.io/badge/Architecture-Local--First-22C55E.svg)](#how-it-works)
 
 ---
 
 ## Why Agent Remote?
 
-Browser-based remote dashboards struggle on mobile: heavy DOM trees freeze during long token streams, diffs are hard to read, and reconnecting after locking your phone drops state.
+Browser-based remote dashboards lag on mobile during long streams and drop state when you lock your phone.
 
-**Agent Remote** splits the problem cleanly:
+**Agent Remote** connects a native **React Native / Expo** app directly to a lightweight local **Host Bridge** (`npx agent-remote-cli`) on your computer:
 
-1. A lightweight **Host Bridge** runs on your dev machine (`Windows`, `macOS`, `Linux`) and talks to your local coding agents over structured JSON protocols (`stream-json`, `ACP`, `app-server`) — never fragile terminal screen-scraping.
-2. A **Native Mobile App** (`React Native` + `Expo`) connects directly to your machine over **LAN Wi-Fi** or **Tailscale / Cloudflare Tunnel** with frame-batched streaming, collapsible tool cards, interactive approval sheets, and sequence-based event replay.
-
-| Feature | Web Dashboard | SSH Terminal on Phone | **Agent Remote** |
-| :--- | :---: | :---: | :---: |
-| Smooth 60fps streaming on mobile | Laggy on long threads | Raw ANSI walls of text | **Frame-batched native FlatList** |
-| Multi-agent (Antigravity + Codex + ...) | Single vendor | Manual CLI switching | **Unified Adapter Protocol** |
-| Interactive tool approval UI | Clunky mobile web | Keyboard-heavy | **Native Bottom Sheet** |
-| Reconnect after screen lock | Full reload | Session drop | **Seq-based delta replay** |
-| Local-first privacy (no relay server) | Cloud-routed | Direct | **Direct LAN / Tailscale** |
+- **Zero web lag**: Frame-batched native streaming (`~40ms`), collapsible tool cards, and pure OLED dark UI.
+- **Instant sync**: Automatically lists your existing local Antigravity projects & conversations and lets you continue them from your phone.
+- **Live `agy` models**: Fetches all models available in your local `agy models` (Gemini, Claude, etc.) directly in the mobile composer.
+- **Image attachments & Git Diff Review**: Attach screenshots from your phone for `agy` to inspect, and review `+additions / -deletions` with a built-in unified diff viewer.
+- **100% Local-First**: Uses your existing local `agy` authentication — no Google password prompts, no cloud relay, no data collection.
 
 ---
 
-## Architecture
+## Quick Start (2 Steps)
+
+### 1. Start the Bridge on Your Computer
+
+Make sure [Antigravity CLI (`agy`)](https://antigravity.google) is installed and logged in, then run inside any project folder:
+
+```bash
+npx agent-remote-cli
+```
+
+Your terminal prints the local endpoint, a 6-character pair code, and a **QR code**.
+
+> **Use outside Wi-Fi (4G/5G):** Run with your Tailscale or Cloudflare Tunnel URL:
+> `npx agent-remote-cli --public-url https://<your-tunnel-url>`
+
+### 2. Connect from Your Phone
+
+- **Android APK (Recommended):** Download the latest `.apk` from [GitHub Releases](https://github.com/letmevibe/agent-remote/releases) (or [GitHub Actions](https://github.com/letmevibe/agent-remote/actions/workflows/android-apk.yml)), install it, and scan the terminal QR code.
+- **Run Mobile App from Source (Expo Go):**
+  ```bash
+  git clone https://github.com/letmevibe/agent-remote.git
+  cd agent-remote
+  npm install
+  npm run mobile:start
+  ```
+
+After pairing once, your device token is stored securely (`expo-secure-store`) — next time just open the app and start coding.
+
+---
+
+## How It Works
 
 ```mermaid
 flowchart LR
-    Phone["Mobile App (Expo / React Native)"]
+    Phone["Mobile App (React Native)"]
     Net["LAN Wi-Fi / Tailscale / Tunnel"]
-    Bridge["Host Bridge (Node.js + Socket.IO)"]
+    Bridge["agent-remote-cli (Local Host Bridge)"]
     Agy["Antigravity CLI (agy)"]
-    Codex["Codex CLI (codex)"]
-    More["Custom Adapters (Claude Code, Gemini CLI...)"]
 
     Phone <-->|"Socket.IO + REST (Device Token)"| Net
     Net <--> Bridge
-    Bridge <-->|"stream-json / ACP"| Agy
-    Bridge <-->|"exec --json / app-server"| Codex
-    Bridge <-->|"AgentAdapter Interface"| More
+    Bridge <-->|"stream-json + local history"| Agy
 ```
 
-### Monorepo Layout
+### Monorepo Structure
 
 ```text
 agent-remote/
-├── packages/protocol/   # Shared TypeScript protocol (events, sessions, approvals, git diff)
-├── apps/bridge/         # Local-first Host Bridge CLI & daemon (Express + Socket.IO + QR pairing)
-└── apps/mobile/         # Native iOS / Android client (Expo Router + React Native)
+├── packages/protocol/   # Shared TypeScript event & RPC protocol
+├── apps/bridge/         # Standalone npm CLI (`agent-remote-cli`)
+└── apps/mobile/         # Native iOS / Android client (Expo SDK 58)
 ```
 
 ---
 
 ## Supported Agents
 
-| Agent | CLI Binary | Protocol | Status |
-| :--- | :--- | :--- | :--- |
-| **Google Antigravity** | `agy` | `stream-json` (ACP upgrade in progress) | **Ready** |
-| **OpenAI Codex** | `codex` | `exec --json` (`app-server` upgrade in progress) | **Ready** |
-| **Claude Code** | `claude` | `stream-json` | Planned (`good first issue`) |
-| **Gemini CLI** | `gemini` | `ACP` | Planned (`good first issue`) |
-
-Want to add your favorite coding agent? See [CONTRIBUTING.md](CONTRIBUTING.md) — implementing a new `AgentAdapter` takes ~60 lines of TypeScript.
-
----
-
-## Quick Start
-
-### Option A: One-Command Bridge (`npx`)
-
-Run inside any project folder on your dev machine:
-
-```bash
-npx agent-remote-cli
-```
-
-The terminal prints your local endpoint, a 6-character pairing code, detected agents (`agy`), and a **QR code**.
-
-> **Remote access outside Wi-Fi:** Start the bridge with `npx agent-remote-cli --public-url https://<your-tailscale-or-tunnel-url>` and scan the generated QR code.
-
-### Option B: Run from Source (Bridge + Mobile App)
-
-```bash
-git clone https://github.com/letmevibe/agent-remote.git
-cd agent-remote
-npm install
-npm run build
-```
-
-Start the Host Bridge and Mobile App in two terminals:
-
-```bash
-# Terminal 1 — Host Bridge
-npm run bridge:start
-
-# Terminal 2 — Mobile App (Expo Go)
-npm run mobile:start
-```
-
-Open with **Expo Go** (or a development build) on iOS / Android, tap **Scan Terminal QR Code**, and start steering your coding agents from your phone.
-
----
-
-## Security & Privacy
-
-- **Local-first by default**: Your prompts, source code, and diffs stay between your phone and your dev machine.
-- **Explicit QR pairing**: Every mobile device exchanges a short pairing code for a random bearer token stored in hardware-backed storage (`expo-secure-store`).
-- **Biometric verification**: Built-in support for Face ID / fingerprint via `expo-local-authentication`.
+| Agent | CLI | Status |
+| :--- | :--- | :--- |
+| **Google Antigravity** | `agy` | **Supported** (streaming, live models, local history sync, image attachments, git diff) |
+| **OpenAI Codex** | `codex` | Pending (adapter scaffolded) |
+| **Claude Code / Gemini CLI** | `claude`, `gemini` | Roadmap (`good first issue`) |
 
 ---
 
 ## Roadmap
 
-- [x] Shared typed event protocol with monotonic sequence numbers (`seq`)
-- [x] Host Bridge daemon with QR pairing, device tokens, and Socket.IO event replay
-- [x] Antigravity CLI & Codex CLI adapters
-- [x] Expo mobile app with QR scanner, Sessions Hub, frame-batched chat, Approval Sheet, and Git Diff viewer
-- [ ] Full bidirectional ACP (`agy acp`) & `codex app-server` JSON-RPC transport
-- [ ] Voice-to-prompt & screenshot attachment
-- [ ] Push notifications when long-running agent turns finish or await approval
-- [ ] Prebuilt Android APK & iOS TestFlight releases
+- [x] One-command Host Bridge published to npm (`npx agent-remote-cli`)
+- [x] Auto-sync existing local Antigravity projects, conversations, and transcripts
+- [x] Live model picker powered by `agy models`
+- [x] Image screenshot upload & inspection + inline Git Diff Review
+- [x] Automated Android APK build via GitHub Actions
+- [ ] Full bidirectional ACP (`agy acp`) interactive tool approvals
+- [ ] Voice-to-prompt input & push notifications
+- [ ] OpenAI Codex & Claude Code adapters
 
 ---
 
-## Contributing
+## Contributing & License
 
-Contributions, bug reports, and new agent adapters are welcome! Check [CONTRIBUTING.md](CONTRIBUTING.md) to get started.
-
-## License
+Pull requests and new agent adapters are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 [MIT](LICENSE) © 2026 Dinh Quang Cuong

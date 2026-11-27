@@ -1,0 +1,36 @@
+{
+  "expo": {
+    "name": "Agent Remote",
+    "slug": "agent-remote",
+    "scheme": "agentremote",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "plugins": [
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Agent Remote to scan pairing QR codes from your desktop Host Bridge."
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow Agent Remote to protect your connected developer hosts with Face ID."
+        }
+      ],
+      "expo-secure-store"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "dev.agentremote.mobile"
+    },
+    "android": {
+      "package": "dev.agentremote.mobile"
+    }
+  }
+}

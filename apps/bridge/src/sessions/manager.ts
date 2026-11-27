@@ -150,12 +150,13 @@ export class SessionManager {
     this.persist();
     this.onSessionUpdated(summary);
 
-    if (req.initialPrompt?.trim()) {
+    if (req.initialPrompt?.trim() || req.attachments?.length) {
       this.sendPrompt({
         sessionId: id,
-        text: req.initialPrompt.trim(),
+        text: req.initialPrompt?.trim() || 'Inspect the attached image(s).',
         mode: summary.mode,
         model: summary.model,
+        attachments: req.attachments,
       });
     }
 
@@ -190,6 +191,7 @@ export class SessionManager {
       type: 'user.message',
       messageId: crypto.randomUUID(),
       text: req.text,
+      attachments: req.attachments,
     });
 
     this.setStatus(session, 'running');
@@ -198,6 +200,12 @@ export class SessionManager {
     // imported sessions, carry recent context into a new agy-cli trajectory
     // and then bind its conversation ID for all future turns.
     let promptToSend = req.text;
+    if (req.attachments && req.attachments.length > 0) {
+      const attachmentBlock = req.attachments
+        .map((a) => `- ${a.hostPath} (${a.mimeType})`)
+        .join('\n');
+      promptToSend = `${promptToSend}\n\nAttached image file(s) on disk (inspect using view_file):\n${attachmentBlock}`;
+    }
     let resumeId = session.externalConversationId;
 
     if (session.isCliNative === false) {

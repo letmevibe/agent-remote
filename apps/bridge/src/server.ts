@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -5,6 +7,7 @@ import cors from 'cors';
 import express from 'express';
 import { Server as SocketIOServer } from 'socket.io';
 import type {
+  AttachmentRef,
   ClientToServerEvents,
   CreateSessionRequest,
   HostInfo,
@@ -33,7 +36,7 @@ export async function startBridgeServer(
 ): Promise<StartedBridge> {
   const app = express();
   app.use(cors());
-  app.use(express.json({ limit: '2mb' }));
+  app.use(express.json({ limit: '20mb' }));
 
   const server = http.createServer(app);
   const io = new SocketIOServer<ClientToServerEvents, ServerToClientEvents>(server, {
@@ -160,6 +163,37 @@ export async function startBridgeServer(
     }
 
     res.json({ projects: Array.from(projectMap.values()) });
+  });
+
+  app.post('/api/uploads', requireAuth, (req, res) => {
+    try {
+      const nameRaw = String(req.body?.name ?? 'image.jpg');
+      const mimeType = String(req.body?.mimeType ?? 'image/jpeg');
+      const base64 = String(req.body?.base64 ?? '');
+      if (!base64) {
+        res.status(400).json({ error: 'Missing base64 image data' });
+        return;
+      }
+
+      const safeName = nameRaw.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const id = crypto.randomUUID();
+      const uploadDir = path.join(os.homedir(), '.agent-remote', 'uploads');
+      fs.mkdirSync(uploadDir, { recursive: true });
+      const hostPath = path.join(uploadDir, `${Date.now()}-${safeName}`);
+      fs.writeFileSync(hostPath, Buffer.from(base64, 'base64'));
+
+      const attachment: AttachmentRef = {
+        id,
+        name: safeName,
+        mimeType,
+        hostPath,
+      };
+      res.status(201).json({ attachment });
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : 'Failed to save upload',
+      });
+    }
   });
 
   app.get('/api/diff', requireAuth, async (req, res) => {

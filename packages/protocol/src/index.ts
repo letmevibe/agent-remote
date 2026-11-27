@@ -15,6 +15,14 @@ export interface ModelInfo {
   label: string;
 }
 
+export interface AttachmentRef {
+  id: string;
+  name: string;
+  mimeType: string;
+  hostPath: string;
+  localUri?: string;
+}
+
 export type SessionStatus =
   | 'idle'
   | 'running'
@@ -78,6 +86,7 @@ export interface CreateSessionRequest {
   effort?: ReasoningEffort;
   model?: string;
   initialPrompt?: string;
+  attachments?: AttachmentRef[];
 }
 
 export interface SendPromptRequest {
@@ -86,6 +95,7 @@ export interface SendPromptRequest {
   mode?: AgentExecutionMode;
   effort?: ReasoningEffort;
   model?: string;
+  attachments?: AttachmentRef[];
 }
 
 export interface PermissionRequestPayload {
@@ -112,6 +122,7 @@ export type StreamEventPayload =
       type: 'user.message';
       messageId: string;
       text: string;
+      attachments?: AttachmentRef[];
     }
   | {
       type: 'assistant.delta';

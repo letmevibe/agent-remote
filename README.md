@@ -75,7 +75,7 @@ Want to add your favorite coding agent? See [CONTRIBUTING.md](CONTRIBUTING.md) â
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/cngba3/agent-remote.git
+git clone https://github.com/letmevibe/agent-remote.git
 cd agent-remote
 npm install
 npm run build

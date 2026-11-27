@@ -23,6 +23,7 @@ interface InternalSession {
   activeTurn?: AgentTurnHandle;
   externalConversationId?: string;
   sourceDir?: string;
+  isCliNative?: boolean;
   transcriptLoaded?: boolean;
 }
 
@@ -71,6 +72,9 @@ export class SessionManager {
           existing.summary.status = item.summary.status;
         }
         existing.sourceDir = item.sourceDir;
+        if (existing.isCliNative === undefined) {
+          existing.isCliNative = item.isCliNative;
+        }
         continue;
       }
 
@@ -79,6 +83,7 @@ export class SessionManager {
         events: [],
         externalConversationId: item.externalConversationId,
         sourceDir: item.sourceDir,
+        isCliNative: item.isCliNative,
         transcriptLoaded: false,
       });
     }
@@ -189,17 +194,42 @@ export class SessionManager {
 
     this.setStatus(session, 'running');
 
+    // Only pass --resume for native agy-cli trajectories; for Desktop/IDE
+    // imported sessions, carry recent context into a new agy-cli trajectory
+    // and then bind its conversation ID for all future turns.
+    let promptToSend = req.text;
+    let resumeId = session.externalConversationId;
+
+    if (session.isCliNative === false) {
+      resumeId = undefined;
+      const recentContext = session.events
+        .slice(-8, -1)
+        .map((e) => {
+          if (e.payload.type === 'user.message') return `User: ${e.payload.text}`;
+          if (e.payload.type === 'assistant.delta') return `Assistant: ${e.payload.delta}`;
+          return '';
+        })
+        .filter(Boolean)
+        .join('\n\n')
+        .slice(-3000);
+
+      if (recentContext) {
+        promptToSend = `Continuing conversation "${session.summary.title}". Recent context:\n${recentContext}\n\nNew user message:\n${req.text}`;
+      }
+    }
+
     const handle = adapter.runTurn({
       sessionId: session.summary.id,
       workspacePath: session.summary.workspacePath,
-      prompt: req.text,
+      prompt: promptToSend,
       mode: session.summary.mode as AgentExecutionMode,
       effort: session.summary.effort,
       model: session.summary.model,
-      resumeConversationId: session.externalConversationId,
+      resumeConversationId: resumeId,
       onConversationId: (externalId) => {
-        if (session.externalConversationId !== externalId) {
+        if (session.externalConversationId !== externalId || session.isCliNative === false) {
           session.externalConversationId = externalId;
+          session.isCliNative = true;
           this.persist();
         }
       },

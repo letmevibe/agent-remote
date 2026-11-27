@@ -23,6 +23,7 @@ export interface DiscoveredConversation {
   summary: SessionSummary;
   externalConversationId: string;
   sourceDir: string;
+  isCliNative: boolean;
 }
 
 function uriToPath(uri: string, fallback: string): string {
@@ -124,6 +125,7 @@ export async function discoverAntigravityConversations(
         byId.set(id, {
           externalConversationId: id,
           sourceDir: baseDir,
+          isCliNative: baseDir.endsWith('antigravity-cli'),
           summary: {
             id,
             title,
